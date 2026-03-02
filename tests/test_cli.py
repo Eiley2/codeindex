@@ -115,3 +115,61 @@ def test_index_uses_project_defaults_when_name_is_omitted(
 
     assert result.exit_code == 0
     assert "repo_default" in result.output
+
+
+def test_delete_confirmation_mismatch_aborts_without_delete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        cli_module.service,
+        "preview_delete",
+        lambda _name: service_module.DeletePlan(
+            index_name="demo_index",
+            tables=("demo_index__code_embeddings",),
+            metadata_exists=True,
+        ),
+    )
+
+    def _delete(_name: str, dry_run: bool = False) -> service_types.DeletePlan:
+        raise AssertionError("delete_index should not be called when confirmation mismatches")
+
+    monkeypatch.setattr(cli_module.service, "delete_index", _delete)
+
+    result = runner.invoke(cli_module.cli, ["delete", "demo_index"], input="wrong_name\n")
+
+    assert result.exit_code == 0
+    assert "mismatch" in result.output.lower()
+
+
+def test_delete_with_yes_executes_delete(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        cli_module.service,
+        "preview_delete",
+        lambda _name: service_module.DeletePlan(
+            index_name="demo_index",
+            tables=("demo_index__code_embeddings",),
+            metadata_exists=True,
+        ),
+    )
+
+    called: dict[str, object] = {"value": False}
+
+    def _delete(name: str, dry_run: bool = False) -> service_types.DeletePlan:
+        called["value"] = True
+        assert name == "demo_index"
+        assert dry_run is False
+        return service_types.DeletePlan(
+            index_name="demo_index",
+            tables=("demo_index__code_embeddings",),
+            metadata_exists=True,
+        )
+
+    monkeypatch.setattr(cli_module.service, "delete_index", _delete)
+
+    result = runner.invoke(cli_module.cli, ["delete", "demo_index", "--yes"])
+
+    assert result.exit_code == 0
+    assert called["value"] is True
+    assert "Deletion completed" in result.output

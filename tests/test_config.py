@@ -73,3 +73,52 @@ def test_get_database_url_missing(
 
     with pytest.raises(ConfigurationError):
         config.get_database_url(tmp_path / "missing.toml")
+
+
+def test_resolve_database_url_precedence_env_over_dotenv_and_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        config.DATABASE_URL_ENV_VAR,
+        "postgresql://env-user:pw@localhost:5432/envdb",
+    )
+
+    (tmp_path / ".env").write_text(
+        "COCOINDEX_DATABASE_URL=postgresql://dotenv-user:pw@localhost:5432/dotenvdb\n",
+        encoding="utf-8",
+    )
+    conf = tmp_path / "config.toml"
+    conf.write_text(
+        "database_url = 'postgresql://file-user:pw@localhost:5432/filedb'\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_database_url(config_path=conf)
+
+    assert value == "postgresql://env-user:pw@localhost:5432/envdb"
+    assert source == f"env:{config.DATABASE_URL_ENV_VAR}"
+
+
+def test_resolve_database_url_precedence_dotenv_over_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(config.DATABASE_URL_ENV_VAR, raising=False)
+
+    (tmp_path / ".env").write_text(
+        "COCOINDEX_DATABASE_URL=postgresql://dotenv-user:pw@localhost:5432/dotenvdb\n",
+        encoding="utf-8",
+    )
+    conf = tmp_path / "config.toml"
+    conf.write_text(
+        "database_url = 'postgresql://file-user:pw@localhost:5432/filedb'\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_database_url(config_path=conf)
+
+    assert value == "postgresql://dotenv-user:pw@localhost:5432/dotenvdb"
+    assert source.startswith(".env:")
