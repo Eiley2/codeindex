@@ -20,6 +20,16 @@ def integration_db_url() -> str:
 
 
 @pytest.mark.integration
+def test_integration_fixture_applies_migrations(integration_db_url: str) -> None:
+    applied_versions = {
+        version for version, _name, _applied_at
+        in migrations.list_applied_migrations(integration_db_url)
+    }
+    assert migrations.latest_migration_version() in applied_versions
+    assert catalog.table_exists(integration_db_url, catalog.CATALOG_TABLE) is True
+
+
+@pytest.mark.integration
 def test_catalog_upsert_and_get(integration_db_url: str) -> None:
     catalog.ensure_catalog_table(integration_db_url)
     index_name = f"it_{uuid4().hex[:8]}"
