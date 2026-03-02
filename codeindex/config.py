@@ -6,6 +6,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from dotenv import find_dotenv, load_dotenv
+
 from .errors import ConfigurationError, ValidationError
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -64,6 +66,21 @@ def _read_toml_file(path: Path) -> dict[str, Any]:
 
 
 def get_database_url(config_path: Path | None = None) -> str:
+    url, _ = resolve_database_url(config_path=config_path)
+    return url
+
+
+def resolve_database_url(config_path: Path | None = None) -> tuple[str, str]:
+    # Load .env if the variable is not already set by the shell.
+    env_source = f"env:{DATABASE_URL_ENV_VAR}"
+    existing_env_url = os.getenv(DATABASE_URL_ENV_VAR)
+    if not existing_env_url:
+        dotenv_path = find_dotenv(usecwd=True)
+        if dotenv_path:
+            load_dotenv(dotenv_path, override=False)
+            if os.getenv(DATABASE_URL_ENV_VAR):
+                env_source = f".env:{dotenv_path}"
+
     url = os.getenv(DATABASE_URL_ENV_VAR)
     if not url:
         conf_path = config_path or _default_config_path()
@@ -75,6 +92,8 @@ def get_database_url(config_path: Path | None = None) -> str:
                 raw_value = nested.get("database_url")
         if isinstance(raw_value, str):
             url = raw_value.strip()
+            if url:
+                return url, f"config:{conf_path}"
 
     if not url:
         raise ConfigurationError(
@@ -86,7 +105,7 @@ def get_database_url(config_path: Path | None = None) -> str:
             f"with:\n"
             f"  database_url = 'postgresql://user:password@localhost:5432/cocoindex'"
         )
-    return url
+    return url, env_source
 
 
 def slugify(name: str) -> str:

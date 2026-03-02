@@ -17,6 +17,10 @@ uv run codeindex --help
 uv run codeindex index /path/to/repo my_repo
 uv run codeindex search my_repo "authentication middleware" --top-k 10
 uv run codeindex list
+uv run codeindex status
+uv run codeindex reindex my_repo
+uv run codeindex doctor
+uv run codeindex delete my_repo --yes
 ```
 
 ## Install global CLI (optional)
@@ -39,7 +43,16 @@ uv run pytest -q
 `codeindex` resolves database URL in this order:
 
 1. Environment variable `COCOINDEX_DATABASE_URL`
-2. `~/.config/codeindex/config.toml`
+2. `.env` file in current/parent directories
+3. `~/.config/codeindex/config.toml`
+
+Example `.env`:
+
+```dotenv
+COCOINDEX_DATABASE_URL=postgresql://user:password@localhost:5432/cocoindex
+```
+
+You can copy from `.env.example`.
 
 Example config file:
 
@@ -47,4 +60,11 @@ Example config file:
 database_url = "postgresql://user:password@localhost:5432/cocoindex"
 ```
 
-Legacy scripts `index_codebase.py` and `search.py` are kept as compatibility wrappers and delegate to `codeindex`.
+## Exit codes
+
+- `1` unexpected/internal error
+- `2` configuration error
+- `3` validation error
+- `4` resource not found
+- `5` database error
+- `6` doctor checks failed

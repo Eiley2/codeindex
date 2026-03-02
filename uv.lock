@@ -84,6 +84,7 @@ dependencies = [
     { name = "cocoindex" },
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "python-dotenv" },
     { name = "rich" },
     { name = "sentence-transformers" },
 ]
@@ -101,6 +102,7 @@ requires-dist = [
     { name = "cocoindex", specifier = ">=0.3.34" },
     { name = "pgvector", specifier = ">=0.4.2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3" },
+    { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "rich", specifier = ">=14.3.3" },
     { name = "sentence-transformers", specifier = ">=5.2.3" },
 ]

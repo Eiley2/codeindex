@@ -34,6 +34,23 @@ def test_get_database_url_prefers_env(
     assert config.get_database_url(conf) == "postgresql://env-user:pw@localhost:5432/envdb"
 
 
+def test_get_database_url_from_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv(config.DATABASE_URL_ENV_VAR, raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "COCOINDEX_DATABASE_URL=postgresql://dotenv-user:pw@localhost:5432/dotenvdb\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_database_url()
+
+    assert value == "postgresql://dotenv-user:pw@localhost:5432/dotenvdb"
+    assert source.startswith(".env:")
+
+
 def test_get_database_url_from_config_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

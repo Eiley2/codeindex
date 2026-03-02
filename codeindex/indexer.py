@@ -5,7 +5,7 @@ import os
 
 import cocoindex
 
-from . import config
+from . import catalog, config
 from .errors import ValidationError
 
 
@@ -84,6 +84,7 @@ def run(
     included: list[str],
     excluded: list[str],
     reset: bool,
+    db_url: str | None = None,
 ) -> dict:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
@@ -94,11 +95,25 @@ def run(
         raise ValidationError("Index name cannot be empty.")
 
     flow_name = config.normalize_index_name(name)
-    db_url = config.get_database_url()
+    effective_db_url = db_url or config.get_database_url()
     cocoindex.init(
         cocoindex.Settings(
-            database=cocoindex.DatabaseConnectionSpec(url=db_url)
+            database=cocoindex.DatabaseConnectionSpec(url=effective_db_url)
         )
     )
     _build_flow(flow_name, abs_path, included, excluded)
-    return asyncio.run(_run_async(reset=reset))
+    stats = asyncio.run(_run_async(reset=reset))
+    catalog.upsert_index_metadata(
+        effective_db_url,
+        catalog.IndexMetadata(
+            index_name=flow_name,
+            source_path=abs_path,
+            include_patterns=included,
+            exclude_patterns=excluded,
+            embedding_model=config.EMBEDDING_MODEL,
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            min_chunk_size=config.MIN_CHUNK_SIZE,
+        ),
+    )
+    return stats
