@@ -1,9 +1,33 @@
 # codeindex
 
+Usa `codeindex` para responder preguntas sobre este repositorio con búsqueda semántica.
+
+## Objetivo
+
+- Encontrar rápidamente código relevante por intención, no solo por texto exacto.
+
+## Cuándo ejecutarlo
+
+- Si el usuario pregunta por implementación/flujo/ubicación de lógica.
+- Si un `grep` simple no alcanza.
+
+## Cómo usarlo
+
+1. Indexar el repo (una vez o cuando esté desactualizado):
 ```bash
-codeindex doctor
-codeindex index .
-codeindex search <index_name> "<query>" -k 10
-codeindex status <index_name>
-codeindex delete <index_name> --dry-run
+codeindex index . [index_name]
 ```
+
+2. Consultar:
+```bash
+codeindex search <index_name> "<query>" -k 10
+```
+
+3. Si el repo cambió:
+```bash
+codeindex reindex <index_name>
+```
+
+## Qué devuelve
+
+Resultados con archivo + fragmento relevante para guiar análisis o edición.
