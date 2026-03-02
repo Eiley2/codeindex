@@ -1,6 +1,6 @@
 ---
 name: codeindex-local
-description: Index and semantically search local repositories with codeindex. Use when a user asks where logic lives, how a flow is implemented, or when keyword search is insufficient. Supports index discovery, indexing/reindexing, and semantic queries.
+description: Index and semantically search local repositories with codeindex. Use when the user asks where logic lives, how a flow is implemented, or when keyword search is insufficient. Supports index discovery, indexing, reindexing, and semantic queries.
 ---
 
 # codeindex-local
@@ -14,6 +14,7 @@ codeindex reindex <index_name>
 codeindex delete <index_name> --dry-run
 ```
 
-Notas:
-- `codeindex list` y `codeindex status` muestran los proyectos/indexes disponibles.
-- Si un repo define `exclude_patterns` en `.codeindex.toml`, mantener `node_modules/**` y `.venv/**` para evitar indexado lento.
+## Notes
+
+- Run `codeindex list` and `codeindex status` first to discover available indexes and their metadata.
+- If a repository defines `exclude_patterns` in `.codeindex.toml`, the built-in exclude defaults are replaced. Retain `node_modules/**` and `.venv/**` explicitly in custom lists to avoid slow or oversized indexing runs.

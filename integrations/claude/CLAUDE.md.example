@@ -1,35 +1,36 @@
 # codeindex
 
-Usa `codeindex` para análisis semántico del repo.
+Use `codeindex` for semantic search over this repository before answering questions about where logic lives, how a feature is implemented, or which files handle a given concern.
 
-## Checklist rápido
+## Standard workflow
 
-1. Ver proyectos disponibles:
+1. Check for existing indexes:
 ```bash
 codeindex list
 codeindex status
 ```
 
-2. Si falta índice:
+2. Create an index if none exists:
 ```bash
 codeindex index . [index_name]
 ```
 
-3. Consultar contexto:
+3. Query for relevant context:
 ```bash
 codeindex search <index_name> "<query>" -k 10
 ```
 
-4. Si hay cambios en el repo:
+4. Refresh after code changes:
 ```bash
 codeindex reindex <index_name>
 ```
 
-5. Antes de borrar:
+5. Preview before deleting:
 ```bash
 codeindex delete <index_name> --dry-run
 ```
 
-Notas:
-- `codeindex list` y `codeindex status` sirven para ver qué proyectos/indexes existen.
-- Si usas `.codeindex.toml` con `exclude_patterns`, conserva `node_modules/**` y `.venv/**`.
+## Notes
+
+- `codeindex list` and `codeindex status` show all available indexes and their metadata (path, chunk count, last indexed).
+- If this repository defines `exclude_patterns` in `.codeindex.toml`, the built-in exclude defaults are replaced. Ensure `node_modules/**` and `.venv/**` are present in the custom list to avoid slow indexing.

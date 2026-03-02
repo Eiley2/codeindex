@@ -1,10 +1,32 @@
 # codeindex
 
-CLI local-first para indexar codebases y hacer búsqueda semántica con CocoIndex + PostgreSQL/pgvector.
+**Semantic search over codebases — local-first, embeddings-powered, agent-ready.**
 
-## Quickstart (5 min)
+`codeindex` is a CLI tool that indexes source code into a local PostgreSQL/pgvector database and answers natural language queries using vector similarity search. It is designed for developers and AI agents that need to navigate large codebases efficiently, without relying on cloud services or proprietary APIs.
 
-### 1) Levantar PostgreSQL con pgvector
+---
+
+## How it works
+
+1. **Index** — `codeindex` walks a repository, filters files by configurable include/exclude patterns, splits content into overlapping text chunks, and generates vector embeddings using a local `sentence-transformers` model.
+2. **Store** — Embeddings and metadata are persisted in PostgreSQL via the [pgvector](https://github.com/pgvector/pgvector) extension, managed through [CocoIndex](https://github.com/cocoindex-io/cocoindex) flows.
+3. **Search** — Queries are embedded with the same model and matched against stored chunks using cosine similarity, returning ranked results with file paths and snippets.
+
+Everything runs locally. No API keys, no internet required after the initial model download.
+
+---
+
+## Requirements
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- PostgreSQL 14+ with the [pgvector](https://github.com/pgvector/pgvector) extension
+
+---
+
+## Quickstart
+
+### 1. Start PostgreSQL with pgvector
 
 ```bash
 docker run --name codeindex-db \
@@ -15,13 +37,14 @@ docker run --name codeindex-db \
   -d pgvector/pgvector:pg16
 ```
 
-Crear extensión `vector` (una sola vez):
+Enable the `vector` extension (once):
 
 ```bash
-docker exec -i codeindex-db psql -U postgres -d cocoindex -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker exec -i codeindex-db psql -U postgres -d cocoindex \
+  -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-### 2) Configurar conexión
+### 2. Configure the database connection
 
 ```bash
 cp .env.example .env
@@ -33,136 +56,249 @@ cp .env.example .env
 COCOINDEX_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cocoindex
 ```
 
-### 3) Instalar CLI
+### 3. Install the CLI
 
 ```bash
 uv tool install .
 codeindex --help
 ```
 
-### 4) Indexar y consultar
+### 4. Index and search
 
 ```bash
-codeindex index /path/al/repo mi_repo
-codeindex search mi_repo "authentication middleware"
-codeindex status mi_repo
+codeindex index /path/to/repo my_project
+codeindex search my_project "authentication middleware"
+codeindex status my_project
 ```
+
+---
 
 ## Installation
 
-### Opción A: desarrollo local (recomendado para contribuir)
+### Development (recommended for contributors)
 
 ```bash
 uv sync
 uv run codeindex --help
 ```
 
-### Opción B: instalación global desde repo local
+### Global install from a local clone
 
 ```bash
-uv tool install /ruta/absoluta/al/repo
+uv tool install /absolute/path/to/repo
 codeindex --help
 ```
 
-Para actualizar una instalación global:
+To upgrade an existing global install:
 
 ```bash
-uv tool install --force /ruta/absoluta/al/repo
+uv tool install --force /absolute/path/to/repo
 ```
 
-## Uso diario
+---
+
+## CLI reference
+
+All commands accept `--debug` (print full Python traceback) and `--verbose` (enable operational logs with timing) at the top level.
+
+```
+codeindex [--debug] [--verbose] <command> [options]
+```
+
+### `index`
+
+Index a codebase at `PATH` under an optional `NAME` (defaults to the directory name).
 
 ```bash
-codeindex index /path/to/repo [name]
-codeindex reindex my_repo
-codeindex search my_repo "query" -k 10
+codeindex index <path> [name] [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i, --include PATTERN` | File glob patterns to include. Repeatable. Replaces defaults when specified. |
+| `-e, --exclude PATTERN` | Additional glob patterns to exclude. Repeatable. Added on top of active baseline. |
+| `--reset` | Drop the existing index and rebuild from scratch. |
+| `--max-files N` | Abort if the matched file count exceeds N. |
+| `--max-file-bytes N` | Abort if any individual file exceeds N bytes. |
+
+### `search`
+
+Search an index using a natural language query.
+
+```bash
+codeindex search <name> "<query>" [options]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-k, --top-k N` | 5 | Number of results to return. |
+| `-s, --snippet-length N` | 250 | Characters to display per result. |
+
+Results are ranked by cosine similarity score and color-coded (green ≥ 0.4, yellow ≥ 0.25, red below).
+
+### `reindex`
+
+Re-index an existing project using its saved metadata or project defaults.
+
+```bash
+codeindex reindex <name> [options]
+```
+
+Accepts the same `--path`, `--include`, `--exclude`, `--reset`, `--max-files`, and `--max-file-bytes` options as `index`. Useful to pick up code changes since the last index run.
+
+### `list`
+
+List all available indexes.
+
+```bash
 codeindex list
-codeindex status
+```
+
+### `status`
+
+Show index metadata: source path, chunk count, and last indexed timestamp.
+
+```bash
+codeindex status [name]
+```
+
+Omit `name` to show all indexes.
+
+### `delete`
+
+Delete index tables and catalog metadata with a confirmation step.
+
+```bash
+codeindex delete <name> [--dry-run] [--yes]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Preview what would be deleted without making changes. |
+| `--yes` | Skip the interactive confirmation prompt. |
+
+Without `--yes`, you must type the index name to confirm deletion.
+
+### `doctor`
+
+Run environment diagnostics: database connectivity, pgvector availability, privilege checks, applied migrations, and package imports.
+
+```bash
 codeindex doctor
 ```
 
-Comandos destructivos y respaldos:
+Exits with code `6` if any check fails.
+
+### `export` / `import`
+
+Back up and restore index metadata (catalog entries, not the embeddings themselves).
 
 ```bash
-codeindex delete my_repo --dry-run
-codeindex delete my_repo --yes
-codeindex export metadata.json
-codeindex import metadata.json --dry-run
-codeindex import metadata.json
+codeindex export metadata.json [name]
+codeindex import metadata.json [--dry-run]
 ```
 
-`codeindex` se puede ejecutar desde cualquier directorio; para indexar otro repo usa su path absoluto o relativo.
+`export` writes a JSON file. `import` reads it back, with an optional `--dry-run` to validate without writing.
 
-## Configuración
+---
 
-Resolución de DB URL (orden de precedencia):
+## Configuration
 
-1. `COCOINDEX_DATABASE_URL` (env)
-2. `.env` en cwd o directorios padre
+### Database URL
+
+Resolved in the following precedence order:
+
+1. `COCOINDEX_DATABASE_URL` environment variable
+2. `.env` file discovered from the current directory upward
 3. `~/.config/codeindex/config.toml`
 
-Ejemplo `~/.config/codeindex/config.toml`:
+Global config file example:
 
 ```toml
+# ~/.config/codeindex/config.toml
 database_url = "postgresql://user:password@localhost:5432/cocoindex"
 ```
 
-## Config por proyecto
+### Project config (`.codeindex.toml`)
 
-`codeindex` auto-descubre `.codeindex.toml` desde el path actual hacia arriba.
-
-Plantilla:
+`codeindex` auto-discovers `.codeindex.toml` by walking from the current directory toward the filesystem root. Place one at the root of a repository to codify its indexing settings.
 
 ```bash
-cp .codeindex.toml.example /path/al/repo/.codeindex.toml
+cp .codeindex.toml.example /path/to/repo/.codeindex.toml
 ```
 
-Claves soportadas:
+All keys are optional:
 
-- `[index].name`
-- `[index].include_patterns`
-- `[index].exclude_patterns`
-- `[index].reset`
-- `[index].max_files`
-- `[index].max_file_bytes`
-- `[chunking].chunk_size`
-- `[chunking].chunk_overlap`
-- `[chunking].min_chunk_size`
+```toml
+[index]
+name = "my_project"                    # Defaults to directory name
+include_patterns = ["*.py", "*.md"]   # Replaces built-in defaults
+exclude_patterns = [                   # Replaces built-in defaults
+  "node_modules/**",
+  ".git/**",
+  ".venv/**",
+]
+reset = false                          # Drop and rebuild on every run
+max_files = 20000                      # Abort threshold (file count)
+max_file_bytes = 5000000               # Abort threshold (per-file bytes)
 
-## Defaults operativos
+[chunking]
+chunk_size = 1000                      # Target chunk size in characters
+chunk_overlap = 300                    # Overlap between adjacent chunks
+min_chunk_size = 300                   # Discard chunks smaller than this
+```
 
-Si no defines `.codeindex.toml` ni flags de override:
+### Built-in defaults
 
-- `include_patterns`:
-  `*.ts, *.tsx, *.js, *.jsx, *.py, *.go, *.rs, *.java, *.rb, *.php, *.cs, *.sql, *.md`
-- `exclude_patterns`:
-  `node_modules/**, .git/**, .venv/**, venv/**, env/**, .tox/**, .nox/**, build/**, dist/**, .next/**, __pycache__/**, .mypy_cache/**, .pytest_cache/**, .ruff_cache/**, *.min.js, *.lock, *.map`
-- chunking:
-  `chunk_size=1000`, `chunk_overlap=300`, `min_chunk_size=300`
-- límites:
-  `max_files` y `max_file_bytes` desactivados por defecto (sin límite)
+Applied when no `include_patterns` or `exclude_patterns` are set in `.codeindex.toml` or via CLI flags:
 
-Reglas de precedencia importantes:
+**Include patterns:**
+```
+*.ts  *.tsx  *.js  *.jsx  *.py  *.go  *.rs  *.java  *.rb  *.php  *.cs  *.sql  *.md
+```
 
-- Si defines `[index].include_patterns`, reemplazas los includes por defecto.
-- Si defines `[index].exclude_patterns`, reemplazas los excludes por defecto.
-- `--exclude` en CLI se agrega al baseline activo (defaults o `.codeindex.toml`).
-- Si personalizas `exclude_patterns`, mantén explícitamente exclusiones costosas como `.venv/**` y `node_modules/**`.
+**Exclude patterns:**
+```
+node_modules/**  .git/**  .venv/**  venv/**  env/**  .tox/**  .nox/**
+build/**  dist/**  .next/**  __pycache__/**  .mypy_cache/**
+.pytest_cache/**  .ruff_cache/**  *.min.js  *.lock  *.map
+```
 
-## Integraciones de agentes
+**Chunking defaults:**
+- `chunk_size`: 1000 characters
+- `chunk_overlap`: 300 characters
+- `min_chunk_size`: 300 characters
 
-- Codex skill: ver [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#codex-skill)
-- Claude project instructions: ver [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#claude)
+### Precedence rules
 
-## Observabilidad
+- Defining `[index].include_patterns` in `.codeindex.toml` **replaces** the built-in include list entirely.
+- Defining `[index].exclude_patterns` in `.codeindex.toml` **replaces** the built-in exclude list entirely. When doing so, explicitly retain high-cost directories like `node_modules/**` and `.venv/**`.
+- The `--exclude` CLI flag **appends** to whatever baseline is active (built-in defaults or `.codeindex.toml`).
 
-Usa `--verbose` para logs operativos (incluye tiempos por operación):
+---
+
+## Agent integrations
+
+`codeindex` is designed to be used by AI coding agents as a semantic context retrieval layer.
+
+- **Codex skill:** see [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#codex)
+- **Claude project instructions:** see [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#claude)
+
+---
+
+## Observability
+
+Use `--verbose` to enable operational logs, including per-operation timing:
 
 ```bash
-codeindex --verbose index /path/al/repo
+codeindex --verbose index /path/to/repo
 ```
 
-## Tests
+---
+
+## Development
+
+### Running the test suite
 
 ```bash
 uv run ruff check .
@@ -170,7 +306,9 @@ uv run mypy codeindex tests
 uv run pytest -q
 ```
 
-E2E real (`index -> search`) con DB de prueba:
+### End-to-end tests
+
+E2E tests perform a real `index → search` cycle against a live database and are opt-in:
 
 ```bash
 export COCOINDEX_TEST_DATABASE_URL='postgresql://postgres:postgres@localhost:5432/cocoindex_test'
@@ -178,23 +316,27 @@ export COCOINDEX_RUN_E2E=1
 uv run pytest -q -m e2e
 ```
 
-## Release hygiene
+---
 
-- Changelog: `CHANGELOG.md`
-- CI de release por tag: `.github/workflows/release.yml`
+## Exit codes
 
-Publicar release:
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Internal error |
+| `2` | Configuration error |
+| `3` | Validation error |
+| `4` | Resource not found |
+| `5` | Database error |
+| `6` | Doctor checks failed |
+
+---
+
+## Release
+
+Changes are tracked in [CHANGELOG.md](CHANGELOG.md). Releases are published by pushing a version tag; CI handles the rest:
 
 ```bash
 git tag v0.1.1
 git push origin v0.1.1
 ```
-
-## Exit codes
-
-- `1` error interno
-- `2` error de configuración
-- `3` error de validación
-- `4` recurso no encontrado
-- `5` error de base de datos
-- `6` doctor checks fallidos
