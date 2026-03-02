@@ -25,13 +25,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - New CLI override flag `--embedding-provider` on `index` and `reindex`.
 - zsh autocomplete support with `codeindex completion zsh` and `codeindex completion zsh --install`.
 - Interactive setup flow (`codeindex setup`) with menu-based selection for presets/provider/model and prompts for overwrite/database URL.
+- Setup menu prompts now explicitly instruct users to enter an option number and press Enter to avoid confusion.
 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.
 - Catalog access layer (`codeindex.catalog`) now focused exclusively on CRUD operations.
 - Setup/config now persists both `embedding_provider` and `embedding_model`.
 - Catalog metadata now stores embedding provider to keep query/index provider-model alignment.
-- Package version bumped to `1.0.7` to prevent stale install cache behavior.
+- Package version bumped to `1.0.8` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
 - Search now uses the indexed catalog model when available, improving query/index model alignment.

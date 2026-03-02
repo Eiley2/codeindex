@@ -117,12 +117,13 @@ def _select_indexed_option(
     default_index: int | None = None,
 ) -> int:
     console.print(f"\n[bold]{title}[/bold]")
+    console.print("[dim]Type the option number and press Enter.[/dim]")
     for idx, option in enumerate(options, start=1):
         console.print(f"{idx}. {option}")
 
     default_value = None if default_index is None else default_index + 1
     selected = click.prompt(
-        "Select option",
+        "Select option number",
         type=click.IntRange(1, len(options)),
         default=default_value,
         show_default=default_value is not None,
