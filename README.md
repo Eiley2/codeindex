@@ -284,7 +284,7 @@ source ~/.zshrc
 
 ### `skills set` / `skills update`
 
-Set or update Codex/Claude integration templates.
+Set or update Codex/Claude/Cursor integration templates.
 
 ```bash
 codeindex skills set
@@ -296,7 +296,10 @@ Target only one integration:
 ```bash
 codeindex skills set --codex-only
 codeindex skills update --claude-only
+codeindex skills set --cursor-only
 ```
+
+For Cursor, the default install path is `~/.cursor/skills/codeindex-local/SKILL.md`.
 
 ### `export` / `import`
 
@@ -437,6 +440,7 @@ build/**  dist/**  .next/**  __pycache__/**  .mypy_cache/**
 
 - **Codex skill:** see [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#codex)
 - **Claude project instructions:** see [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#claude)
+- **Cursor skill:** see [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md#cursor)
 
 ---
 

@@ -76,3 +76,36 @@ The template instructs Claude to follow a standard `codeindex` workflow before a
 5. Refresh with `codeindex reindex <name>` when the codebase has changed.
 
 This lets Claude retrieve semantically relevant code instead of relying solely on file reads or keyword search.
+
+---
+
+## Cursor
+
+The Cursor skill provides a repository-local `SKILL.md` that teaches Cursor how to use `codeindex` as a semantic retrieval layer before answering code questions.
+
+### Installation
+
+```bash
+codeindex skills set --cursor-only
+```
+
+Manual fallback:
+
+```bash
+CURSOR_HOME="${CURSOR_HOME:-$HOME/.cursor}"
+mkdir -p "$CURSOR_HOME/skills/codeindex-local"
+cp integrations/cursor-skill/SKILL.md \
+  "$CURSOR_HOME/skills/codeindex-local/SKILL.md"
+```
+
+### What the skill covers
+
+The Cursor skill follows the same operating pattern:
+
+1. Check existing indexes with `codeindex list`.
+2. Run `codeindex setup --database-url "<postgres-url>" --preset fast` if config is missing.
+3. Create an index with `codeindex index . [name]` if none exists.
+4. Query with `codeindex search <name> "<query>" -k 10`.
+5. Refresh with `codeindex reindex <name>` after code changes.
+
+This keeps Cursor grounded in semantically relevant code chunks instead of relying only on keyword search.

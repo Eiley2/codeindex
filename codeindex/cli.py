@@ -1047,12 +1047,20 @@ def skills_group() -> None:
     """Install or update agent integration templates."""
 
 
-def _resolve_skill_selection(codex_only: bool, claude_only: bool) -> tuple[bool, bool]:
-    if codex_only and claude_only:
-        raise ValidationError("Use only one of --codex-only or --claude-only.")
-    install_codex = not claude_only
-    install_claude = not codex_only
-    return install_codex, install_claude
+def _resolve_skill_selection(
+    codex_only: bool,
+    claude_only: bool,
+    cursor_only: bool,
+) -> tuple[bool, bool, bool]:
+    selected = [codex_only, claude_only, cursor_only]
+    if sum(bool(value) for value in selected) > 1:
+        raise ValidationError(
+            "Use only one of --codex-only, --claude-only, or --cursor-only."
+        )
+    install_codex = not claude_only and not cursor_only
+    install_claude = not codex_only and not cursor_only
+    install_cursor = not codex_only and not claude_only
+    return install_codex, install_claude, install_cursor
 
 
 def _render_skill_status(label: str, path: Path, status: agent_skills.WriteStatus) -> None:
@@ -1092,21 +1100,40 @@ def _render_skill_status(label: str, path: Path, status: agent_skills.WriteStatu
     show_default=True,
     help="Path to write Claude project instructions.",
 )
+@click.option(
+    "--cursor-dir",
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Cursor config directory where the skill will be written (defaults to ~/.cursor).",
+)
 @click.option("--codex-only", is_flag=True, help="Only set Codex skill template.")
 @click.option("--claude-only", is_flag=True, help="Only set Claude template.")
+@click.option("--cursor-only", is_flag=True, help="Only set Cursor skill template.")
 @click.pass_context
 def skills_set(
     ctx: click.Context,
     codex_home: Path | None,
     claude_file: Path,
+    cursor_dir: Path | None,
     codex_only: bool,
     claude_only: bool,
+    cursor_only: bool,
 ) -> None:
     """Set agent templates without overwriting existing files."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
     try:
-        install_codex, install_claude = _resolve_skill_selection(codex_only, claude_only)
+        install_codex, install_claude, install_cursor = _resolve_skill_selection(
+            codex_only,
+            claude_only,
+            cursor_only,
+        )
         target_codex_home = codex_home or agent_skills.default_codex_home()
+        target_cursor_dir = cursor_dir or agent_skills.default_cursor_dir()
 
         if install_codex:
             codex_path = agent_skills.codex_skill_path(target_codex_home)
@@ -1124,6 +1151,15 @@ def skills_set(
                 mode="set",
             )
             _render_skill_status("Claude template", claude_file, status)
+
+        if install_cursor:
+            cursor_path = agent_skills.cursor_skill_path(target_cursor_dir)
+            status = agent_skills.write_template(
+                cursor_path,
+                agent_skills.CURSOR_SKILL_TEMPLATE,
+                mode="set",
+            )
+            _render_skill_status("Cursor skill", cursor_path, status)
     except Exception as exc:
         _handle_error(exc, debug)
 
@@ -1152,21 +1188,40 @@ def skills_set(
     show_default=True,
     help="Path to write Claude project instructions.",
 )
+@click.option(
+    "--cursor-dir",
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Cursor config directory where the skill will be written (defaults to ~/.cursor).",
+)
 @click.option("--codex-only", is_flag=True, help="Only update Codex skill template.")
 @click.option("--claude-only", is_flag=True, help="Only update Claude template.")
+@click.option("--cursor-only", is_flag=True, help="Only update Cursor skill template.")
 @click.pass_context
 def skills_update(
     ctx: click.Context,
     codex_home: Path | None,
     claude_file: Path,
+    cursor_dir: Path | None,
     codex_only: bool,
     claude_only: bool,
+    cursor_only: bool,
 ) -> None:
     """Update agent templates, overwriting existing files."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
     try:
-        install_codex, install_claude = _resolve_skill_selection(codex_only, claude_only)
+        install_codex, install_claude, install_cursor = _resolve_skill_selection(
+            codex_only,
+            claude_only,
+            cursor_only,
+        )
         target_codex_home = codex_home or agent_skills.default_codex_home()
+        target_cursor_dir = cursor_dir or agent_skills.default_cursor_dir()
 
         if install_codex:
             codex_path = agent_skills.codex_skill_path(target_codex_home)
@@ -1184,5 +1239,14 @@ def skills_update(
                 mode="update",
             )
             _render_skill_status("Claude template", claude_file, status)
+
+        if install_cursor:
+            cursor_path = agent_skills.cursor_skill_path(target_cursor_dir)
+            status = agent_skills.write_template(
+                cursor_path,
+                agent_skills.CURSOR_SKILL_TEMPLATE,
+                mode="update",
+            )
+            _render_skill_status("Cursor skill", cursor_path, status)
     except Exception as exc:
         _handle_error(exc, debug)

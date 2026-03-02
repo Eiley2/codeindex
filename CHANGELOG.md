@@ -26,6 +26,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - zsh autocomplete support with `codeindex completion zsh` and `codeindex completion zsh --install`.
 - Interactive setup flow (`codeindex setup`) with menu-based selection for presets/provider/model and prompts for overwrite/database URL.
 - Setup menu prompts now explicitly instruct users to enter an option number and press Enter to avoid confusion.
+- Cursor skill integration with `codeindex skills set/update`, including a Cursor `SKILL.md` template.
 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.
@@ -34,7 +35,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Catalog metadata now stores embedding provider to keep query/index provider-model alignment.
 - Reindex now honors global embedding configuration from setup/env when explicitly configured, instead of always reusing historical catalog model metadata.
 - CLI index and reindex output now clearly show the resolved embedding provider and model used for the run.
-- Package version bumped to `1.0.10` to prevent stale install cache behavior.
+- Package version bumped to `1.0.11` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
 - Search now uses the indexed catalog model when available, improving query/index model alignment.

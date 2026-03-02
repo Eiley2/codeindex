@@ -611,6 +611,7 @@ def test_skills_set_writes_codex_and_claude_templates(
     runner = CliRunner()
     codex_home = tmp_path / ".codex"
     claude_file = tmp_path / "CLAUDE.md"
+    cursor_dir = tmp_path / ".cursor"
 
     monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
 
@@ -623,15 +624,20 @@ def test_skills_set_writes_codex_and_claude_templates(
             str(codex_home),
             "--claude-file",
             str(claude_file),
+            "--cursor-dir",
+            str(cursor_dir),
         ],
     )
 
     assert result.exit_code == 0
     codex_skill = codex_home / "skills" / "codeindex-local" / "SKILL.md"
+    cursor_skill = cursor_dir / "skills" / "codeindex-local" / "SKILL.md"
     assert codex_skill.is_file()
     assert claude_file.is_file()
+    assert cursor_skill.is_file()
     assert "codeindex list" in codex_skill.read_text(encoding="utf-8")
     assert "codeindex list" in claude_file.read_text(encoding="utf-8")
+    assert "codeindex list" in cursor_skill.read_text(encoding="utf-8")
 
 
 def test_skills_update_overwrites_existing_files(
@@ -641,10 +647,14 @@ def test_skills_update_overwrites_existing_files(
     runner = CliRunner()
     codex_home = tmp_path / ".codex"
     claude_file = tmp_path / "CLAUDE.md"
+    cursor_dir = tmp_path / ".cursor"
     codex_skill = codex_home / "skills" / "codeindex-local" / "SKILL.md"
+    cursor_skill = cursor_dir / "skills" / "codeindex-local" / "SKILL.md"
     codex_skill.parent.mkdir(parents=True, exist_ok=True)
+    cursor_skill.parent.mkdir(parents=True, exist_ok=True)
     codex_skill.write_text("old", encoding="utf-8")
     claude_file.write_text("old", encoding="utf-8")
+    cursor_skill.write_text("old", encoding="utf-8")
 
     monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
 
@@ -657,12 +667,15 @@ def test_skills_update_overwrites_existing_files(
             str(codex_home),
             "--claude-file",
             str(claude_file),
+            "--cursor-dir",
+            str(cursor_dir),
         ],
     )
 
     assert result.exit_code == 0
     assert "old" not in codex_skill.read_text(encoding="utf-8")
     assert "old" not in claude_file.read_text(encoding="utf-8")
+    assert "old" not in cursor_skill.read_text(encoding="utf-8")
 
 
 def test_skills_rejects_conflicting_selection_flags(
@@ -673,7 +686,7 @@ def test_skills_rejects_conflicting_selection_flags(
 
     result = runner.invoke(
         cli_module.cli,
-        ["skills", "set", "--codex-only", "--claude-only"],
+        ["skills", "set", "--codex-only", "--cursor-only"],
     )
 
     assert result.exit_code == 3
