@@ -224,6 +224,14 @@ Create initial global config with DB URL and embedding model:
 codeindex setup --database-url "postgresql://user:password@localhost:5432/cocoindex" --preset fast
 ```
 
+Run interactive setup (recommended for local use):
+
+```bash
+codeindex setup
+```
+
+Interactive mode shows numbered menus for setup mode, presets, provider, and model, so you can select values instead of typing them manually.
+
 Use OpenRouter:
 
 ```bash
@@ -235,6 +243,12 @@ Use a custom local model id instead of preset:
 
 ```bash
 codeindex setup --embedding-model "intfloat/e5-large-v2"
+```
+
+For scripts/CI, disable prompts explicitly:
+
+```bash
+codeindex setup --no-interactive --force --preset fast
 ```
 
 ### `completion zsh`

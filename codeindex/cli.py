@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import click
+from click.core import ParameterSource
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -56,6 +57,10 @@ def _normalize_optional_name(name: str | None) -> str | None:
 
 
 def _read_database_url_from_config(path: Path) -> str | None:
+    return _read_config_str(path, "database_url")
+
+
+def _read_config_str(path: Path, key: str) -> str | None:
     if not path.is_file():
         return None
     try:
@@ -64,11 +69,11 @@ def _read_database_url_from_config(path: Path) -> str | None:
         return None
     if not isinstance(data, dict):
         return None
-    raw = data.get("database_url")
+    raw = data.get(key)
     if raw is None:
         nested = data.get("codeindex", {})
         if isinstance(nested, dict):
-            raw = nested.get("database_url")
+            raw = nested.get(key)
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
     return None
@@ -103,6 +108,113 @@ def _upsert_managed_block(path: Path, block: str, start_marker: str, end_marker:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(updated, encoding="utf-8")
     return "created" if not existing else "updated"
+
+
+def _select_indexed_option(
+    title: str,
+    options: list[str],
+    *,
+    default_index: int | None = None,
+) -> int:
+    console.print(f"\n[bold]{title}[/bold]")
+    for idx, option in enumerate(options, start=1):
+        console.print(f"{idx}. {option}")
+
+    default_value = None if default_index is None else default_index + 1
+    selected = click.prompt(
+        "Select option",
+        type=click.IntRange(1, len(options)),
+        default=default_value,
+        show_default=default_value is not None,
+    )
+    return int(selected) - 1
+
+
+def _local_model_options() -> list[str]:
+    known = []
+    for preset in config.EMBEDDING_MODEL_PRESETS:
+        if preset.provider == "local":
+            known.append(preset.model_id)
+    unique = list(dict.fromkeys(known))
+    return unique + ["Custom model id"]
+
+
+def _openrouter_model_options() -> list[str]:
+    return [
+        config.DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+        "Custom model id",
+    ]
+
+
+def _select_model_for_provider(provider: str, existing_model: str | None) -> str:
+    options = _openrouter_model_options() if provider == "openrouter" else _local_model_options()
+
+    default_index = None
+    if existing_model:
+        for i, option in enumerate(options):
+            if option == existing_model:
+                default_index = i
+                break
+
+    selected_idx = _select_indexed_option(
+        f"Embedding model options ({provider})",
+        options,
+        default_index=default_index,
+    )
+    selected_value = options[selected_idx]
+    if selected_value == "Custom model id":
+        return config.validate_embedding_model_name(
+            click.prompt("Custom embedding model id")
+        )
+    return config.validate_embedding_model_name(selected_value)
+
+
+def _select_embedding_from_presets(
+    existing_provider: str | None,
+    existing_model: str | None,
+) -> tuple[str, str]:
+    presets = list(config.EMBEDDING_MODEL_PRESETS)
+    rows = [
+        f"{preset.key}: {preset.provider} | {preset.model_id} | {preset.label}"
+        for preset in presets
+    ]
+    default_index = 0
+    if existing_provider and existing_model:
+        for idx, preset in enumerate(presets):
+            if (
+                preset.provider == existing_provider
+                and preset.model_id == existing_model
+            ):
+                default_index = idx
+                break
+    choice = _select_indexed_option(
+        "Embedding presets",
+        rows,
+        default_index=default_index,
+    )
+    selected = presets[choice]
+    return selected.provider, selected.model_id
+
+
+def _select_provider(existing_provider: str | None) -> str:
+    provider_options = list(config.EMBEDDING_PROVIDERS)
+    default_provider = existing_provider if existing_provider in provider_options else "local"
+    default_index = provider_options.index(default_provider)
+    provider_idx = _select_indexed_option(
+        "Embedding providers",
+        provider_options,
+        default_index=default_index,
+    )
+    return config.validate_embedding_provider(provider_options[provider_idx])
+
+
+def _select_embedding_manual(
+    existing_provider: str | None,
+    existing_model: str | None,
+) -> tuple[str, str]:
+    provider = _select_provider(existing_provider)
+    model = _select_model_for_provider(provider, existing_model)
+    return provider, model
 
 
 @click.group()
@@ -739,6 +851,14 @@ def embedding_models() -> None:
     is_flag=True,
     help="Overwrite an existing config file.",
 )
+@click.option(
+    "--interactive/--no-interactive",
+    default=None,
+    help=(
+        "Prompt for values. Defaults to interactive when running setup without "
+        "provider/model/db options in a TTY."
+    ),
+)
 @click.pass_context
 def setup_cmd(
     ctx: click.Context,
@@ -748,35 +868,97 @@ def setup_cmd(
     embedding_provider: str | None,
     embedding_model: str | None,
     force: bool,
+    interactive: bool | None,
 ) -> None:
     """Create initial global config with database URL and embedding model."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
     try:
         target = config_path or config.default_config_path()
         existing_db = _read_database_url_from_config(target)
+        existing_provider = _read_config_str(target, "embedding_provider")
+        existing_model = _read_config_str(target, "embedding_model")
+        preset_source = ctx.get_parameter_source("preset")
+        auto_interactive = (
+            database_url is None
+            and embedding_provider is None
+            and embedding_model is None
+            and (preset_source is ParameterSource.DEFAULT)
+        )
+        is_tty = (
+            click.get_text_stream("stdin").isatty()
+            and click.get_text_stream("stdout").isatty()
+        )
+        use_interactive = interactive if interactive is not None else (auto_interactive and is_tty)
+
         if target.exists() and not force:
-            raise ValidationError(
-                f"Config file '{target}' already exists. Use --force to overwrite."
-            )
+            if use_interactive:
+                overwrite = click.confirm(
+                    f"Config file '{target}' already exists. Overwrite?",
+                    default=False,
+                )
+                if not overwrite:
+                    console.print("[yellow]Setup aborted.[/yellow]")
+                    return
+            else:
+                raise ValidationError(
+                    f"Config file '{target}' already exists. Use --force to overwrite."
+                )
 
         preset_value = config.get_embedding_model_preset(preset)
-        chosen_provider = (
-            config.validate_embedding_provider(embedding_provider)
-            if embedding_provider is not None
-            else preset_value.provider
-        )
-        chosen_model = (
-            config.validate_embedding_model_name(embedding_model)
-            if embedding_model is not None
-            else (
-                preset_value.model_id
-                if embedding_provider is None
-                else config.default_embedding_model_for_provider(chosen_provider)
+        if embedding_provider is not None:
+            chosen_provider = config.validate_embedding_provider(embedding_provider)
+        else:
+            chosen_provider = preset_value.provider
+
+        if embedding_model is not None:
+            chosen_model = config.validate_embedding_model_name(embedding_model)
+        else:
+            chosen_model = preset_value.model_id
+
+        if (
+            embedding_provider is not None
+            and embedding_model is None
+            and chosen_provider != preset_value.provider
+        ):
+            chosen_model = config.default_embedding_model_for_provider(chosen_provider)
+
+        if use_interactive and embedding_provider is None and embedding_model is None:
+            mode_options = [
+                "Use benchmark preset (recommended)",
+                "Choose provider and model manually",
+            ]
+            mode_idx = _select_indexed_option(
+                "Embedding setup mode",
+                mode_options,
+                default_index=0,
             )
-        )
+            if mode_idx == 0:
+                chosen_provider, chosen_model = _select_embedding_from_presets(
+                    existing_provider,
+                    existing_model,
+                )
+            else:
+                chosen_provider, chosen_model = _select_embedding_manual(
+                    existing_provider,
+                    existing_model,
+                )
+        elif use_interactive and embedding_provider is not None and embedding_model is None:
+            chosen_model = _select_model_for_provider(chosen_provider, existing_model)
+        elif use_interactive and embedding_provider is None and embedding_model is not None:
+            chosen_provider = _select_provider(existing_provider)
+            chosen_model = config.validate_embedding_model_name(embedding_model)
+
         config.require_embedding_provider_credentials(chosen_provider)
-        chosen_db = database_url.strip() if isinstance(database_url, str) else None
-        if not chosen_db:
+        if database_url is not None:
+            chosen_db = database_url.strip() or None
+        elif use_interactive:
+            chosen_db = click.prompt(
+                "Database URL (leave empty to skip)",
+                default=existing_db or "",
+                show_default=bool(existing_db),
+            ).strip()
+            chosen_db = chosen_db or None
+        else:
             chosen_db = existing_db
 
         lines = [

@@ -425,6 +425,83 @@ def test_setup_existing_file_requires_force(tmp_path: Path) -> None:
     assert "already exists" in result.output
 
 
+def test_setup_interactive_overwrite_and_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                "database_url = 'postgresql://old:old@localhost:5432/old'",
+                "embedding_provider = 'local'",
+                "embedding_model = 'sentence-transformers/all-MiniLM-L6-v2'",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key")
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["setup", "--config-path", str(cfg), "--interactive"],
+        input=(
+            "y\n"
+            "2\n"
+            "2\n"
+            "1\n"
+            "postgresql://new:new@localhost:5432/new\n"
+        ),
+    )
+
+    assert result.exit_code == 0
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    assert data["database_url"] == "postgresql://new:new@localhost:5432/new"
+    assert data["embedding_provider"] == "openrouter"
+    assert data["embedding_model"] == "openai/text-embedding-3-small"
+
+
+def test_setup_interactive_preset_selection(tmp_path: Path) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["setup", "--config-path", str(cfg), "--interactive"],
+        input=(
+            "1\n"
+            "2\n"
+            "\n"
+        ),
+    )
+
+    assert result.exit_code == 0
+    assert "Embedding setup mode" in result.output
+    assert "Embedding presets" in result.output
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    assert data["embedding_provider"] == "local"
+    assert data["embedding_model"] == "BAAI/bge-base-en-v1.5"
+
+
+def test_setup_interactive_abort_when_overwrite_declined(tmp_path: Path) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+    original = "embedding_model = 'sentence-transformers/all-MiniLM-L6-v2'\n"
+    cfg.write_text(original, encoding="utf-8")
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["setup", "--config-path", str(cfg), "--interactive"],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    assert "aborted" in result.output.lower()
+    assert cfg.read_text(encoding="utf-8") == original
+
+
 def test_completion_zsh_prints_block(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
     monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
