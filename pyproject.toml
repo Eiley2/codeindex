@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codeindex"
+version = "0.1.0"
+description = "Semantic search over codebases using CocoIndex and pgvector"
+requires-python = ">=3.11"
+dependencies = [
+    "cocoindex>=0.3.34",
+    "psycopg[binary]>=3.3.3",
+    "pgvector>=0.4.2",
+    "click>=8.3.1",
+    "rich>=14.3.3",
+    "sentence-transformers>=5.2.3",
+]
+
+[project.scripts]
+codeindex = "codeindex.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["codeindex"]
