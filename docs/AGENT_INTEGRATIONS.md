@@ -5,8 +5,10 @@
 Instalar skill:
 
 ```bash
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 mkdir -p "$CODEX_HOME/skills/codeindex-local"
-cp integrations/codex-skill/SKILL.md "$CODEX_HOME/skills/codeindex-local/SKILL.md"
+cp integrations/codex-skill/SKILL.md \
+  "$CODEX_HOME/skills/codeindex-local/SKILL.md"
 ```
 
 El skill incluye flujo para:
