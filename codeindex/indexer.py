@@ -108,8 +108,8 @@ def run(
         catalog.IndexMetadata(
             index_name=flow_name,
             source_path=abs_path,
-            include_patterns=included,
-            exclude_patterns=excluded,
+            include_patterns=tuple(included),
+            exclude_patterns=tuple(excluded),
             embedding_model=config.EMBEDDING_MODEL,
             chunk_size=config.CHUNK_SIZE,
             chunk_overlap=config.CHUNK_OVERLAP,
