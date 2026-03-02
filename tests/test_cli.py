@@ -117,6 +117,37 @@ def test_index_uses_project_defaults_when_name_is_omitted(
     assert "repo_default" in result.output
 
 
+def test_export_calls_service_and_writes_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    output = tmp_path / "metadata.json"
+
+    monkeypatch.setattr(cli_module.service, "export_metadata", lambda **_kwargs: 2)
+
+    result = runner.invoke(cli_module.cli, ["export", str(output)])
+
+    assert result.exit_code == 0
+    assert "Exported" in result.output
+
+
+def test_import_dry_run_calls_service(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    input_path = tmp_path / "metadata.json"
+    input_path.write_text("{\"version\":1,\"items\":[]}", encoding="utf-8")
+
+    monkeypatch.setattr(cli_module.service, "import_metadata", lambda **_kwargs: 0)
+
+    result = runner.invoke(cli_module.cli, ["import", str(input_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Validated" in result.output
+
+
 def test_delete_confirmation_mismatch_aborts_without_delete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

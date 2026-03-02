@@ -18,6 +18,8 @@ class ProjectConfig:
     include_patterns: tuple[str, ...] | None = None
     exclude_patterns: tuple[str, ...] | None = None
     default_reset: bool | None = None
+    max_files: int | None = None
+    max_file_bytes: int | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     min_chunk_size: int | None = None
@@ -114,6 +116,11 @@ def discover(start_path: Path | None = None) -> ProjectConfig:
             "index.exclude_patterns",
         ),
         default_reset=_as_optional_bool(index_data.get("reset"), "index.reset"),
+        max_files=_as_optional_int(index_data.get("max_files"), "index.max_files"),
+        max_file_bytes=_as_optional_int(
+            index_data.get("max_file_bytes"),
+            "index.max_file_bytes",
+        ),
         chunk_size=_as_optional_int(chunk_data.get("chunk_size"), "chunking.chunk_size"),
         chunk_overlap=_as_optional_int(
             chunk_data.get("chunk_overlap"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path, PurePosixPath
 
 import cocoindex
 
@@ -86,6 +87,59 @@ async def _run_async(reset: bool) -> dict:
     )
 
 
+def _matches(path: PurePosixPath, patterns: list[str]) -> bool:
+    return any(path.match(pattern) for pattern in patterns)
+
+
+def _preflight_file_limits(
+    path: str,
+    included: list[str],
+    excluded: list[str],
+    max_files: int | None,
+    max_file_bytes: int | None,
+) -> int:
+    if max_files is not None and max_files < 1:
+        raise ValidationError("--max-files must be >= 1 when provided.")
+    if max_file_bytes is not None and max_file_bytes < 1:
+        raise ValidationError("--max-file-bytes must be >= 1 when provided.")
+
+    root = Path(path)
+    matched_files = 0
+    oversized_files: list[str] = []
+
+    for file_path in root.rglob("*"):
+        if not file_path.is_file():
+            continue
+        relative = PurePosixPath(file_path.relative_to(root).as_posix())
+        if not _matches(relative, included):
+            continue
+        if _matches(relative, excluded):
+            continue
+
+        matched_files += 1
+        if max_files is not None and matched_files > max_files:
+            raise ValidationError(
+                f"Matched files ({matched_files}) exceed max_files={max_files}. "
+                "Narrow include/exclude patterns or increase the limit."
+            )
+
+        if max_file_bytes is not None:
+            size = file_path.stat().st_size
+            if size > max_file_bytes:
+                oversized_files.append(f"{relative} ({size} bytes)")
+                if len(oversized_files) >= 5:
+                    break
+
+    if oversized_files:
+        details = ", ".join(oversized_files)
+        raise ValidationError(
+            "Found files larger than max_file_bytes="
+            f"{max_file_bytes}: {details}."
+        )
+
+    return matched_files
+
+
 def run(
     path: str,
     name: str,
@@ -96,6 +150,8 @@ def run(
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
     min_chunk_size: int | None = None,
+    max_files: int | None = None,
+    max_file_bytes: int | None = None,
 ) -> dict:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
@@ -113,6 +169,13 @@ def run(
     )
     resolved_min_chunk_size = (
         min_chunk_size if min_chunk_size is not None else config.MIN_CHUNK_SIZE
+    )
+    _preflight_file_limits(
+        abs_path,
+        included=included,
+        excluded=excluded,
+        max_files=max_files,
+        max_file_bytes=max_file_bytes,
     )
 
     cocoindex.init(

@@ -5,6 +5,9 @@ include_patterns = ["*.py", "*.md"]
 exclude_patterns = [".git/**", "dist/**", "__pycache__/**"]
 # Optional: used when --reset is not provided
 reset = false
+# Optional safeguards for large repos
+max_files = 20000
+max_file_bytes = 5000000
 
 [chunking]
 chunk_size = 1000

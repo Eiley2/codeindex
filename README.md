@@ -22,6 +22,8 @@ uv run codeindex reindex my_repo
 uv run codeindex doctor
 uv run codeindex delete my_repo --yes
 uv run codeindex delete my_repo --dry-run
+uv run codeindex export metadata.json
+uv run codeindex import metadata.json --dry-run
 ```
 
 ## Install global CLI (optional)
@@ -77,6 +79,8 @@ Supported keys:
 - `[index].include_patterns`
 - `[index].exclude_patterns`
 - `[index].reset`
+- `[index].max_files`
+- `[index].max_file_bytes`
 - `[chunking].chunk_size`
 - `[chunking].chunk_overlap`
 - `[chunking].min_chunk_size`
@@ -104,6 +108,27 @@ uv run codeindex delete my_repo --dry-run
 
 Without `--yes`, the command requires typing the exact index name.
 
+## Metadata Backup
+
+Export and import index metadata:
+
+```bash
+uv run codeindex export metadata.json
+uv run codeindex export metadata.json my_repo
+uv run codeindex import metadata.json --dry-run
+uv run codeindex import metadata.json
+```
+
+`import --dry-run` validates payload without writing to DB.
+
+## Observability
+
+Use `--verbose` to emit service operation logs with elapsed time.
+
+```bash
+uv run codeindex --verbose index /path/to/repo
+```
+
 ## Tests
 
 Standard suite:
@@ -118,6 +143,18 @@ E2E (real CocoIndex index + search):
 export COCOINDEX_TEST_DATABASE_URL='postgresql://postgres:postgres@localhost:5432/cocoindex_test'
 export COCOINDEX_RUN_E2E=1
 uv run pytest -q -m e2e
+```
+
+## Release Hygiene
+
+- Changelog source of truth: `CHANGELOG.md`
+- Tag-based release workflow: `.github/workflows/release.yml`
+
+Create a release by pushing a semantic tag:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## Exit codes

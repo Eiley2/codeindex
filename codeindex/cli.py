@@ -94,6 +94,18 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
     default=False,
     help="Drop and rebuild the index from scratch.",
 )
+@click.option(
+    "--max-files",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Fail if matched files exceed this limit.",
+)
+@click.option(
+    "--max-file-bytes",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Fail if any matched file exceeds this size in bytes.",
+)
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -102,6 +114,8 @@ def index(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     reset: bool,
+    max_files: int | None,
+    max_file_bytes: int | None,
 ) -> None:
     """Index a codebase at PATH under the optional NAME."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
@@ -114,6 +128,8 @@ def index(
                 include=include,
                 exclude=exclude,
                 reset=reset,
+                max_files=max_files,
+                max_file_bytes=max_file_bytes,
             )
         )
     except Exception as exc:
@@ -320,6 +336,18 @@ def status(ctx: click.Context, name: str | None) -> None:
     default=None,
     help="Rebuild index from scratch. If omitted, uses project/catalog default.",
 )
+@click.option(
+    "--max-files",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Fail if matched files exceed this limit.",
+)
+@click.option(
+    "--max-file-bytes",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Fail if any matched file exceeds this size in bytes.",
+)
 @click.pass_context
 def reindex(
     ctx: click.Context,
@@ -328,6 +356,8 @@ def reindex(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     reset: bool | None,
+    max_files: int | None,
+    max_file_bytes: int | None,
 ) -> None:
     """Re-index an existing index using saved metadata or project defaults."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
@@ -340,6 +370,8 @@ def reindex(
                 include=include,
                 exclude=exclude,
                 reset=reset,
+                max_files=max_files,
+                max_file_bytes=max_file_bytes,
             )
         )
     except Exception as exc:
@@ -435,3 +467,58 @@ def doctor_cmd(ctx: click.Context) -> None:
         console.print("\n[bold green]Doctor checks passed.[/bold green]")
     else:
         raise click.exceptions.Exit(code=6)
+
+
+@cli.command(name="export")
+@click.argument(
+    "output",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+)
+@click.argument("name", required=False)
+@click.pass_context
+def export_metadata(ctx: click.Context, output: Path, name: str | None) -> None:
+    """Export index metadata to a JSON file."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        count = service.export_metadata(
+            output_path=output,
+            index_name=_normalize_optional_name(name),
+        )
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+    console.print(f"[bold green]Exported[/bold green] {count} metadata entries to {output}")
+
+
+@cli.command(name="import")
+@click.argument(
+    "input_path",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+)
+@click.option("--dry-run", is_flag=True, help="Validate input without writing to DB.")
+@click.pass_context
+def import_metadata_cmd(ctx: click.Context, input_path: Path, dry_run: bool) -> None:
+    """Import index metadata from a JSON file."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        count = service.import_metadata(input_path=input_path, dry_run=dry_run)
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+    if dry_run:
+        console.print(f"[bold green]Validated[/bold green] {count} metadata entries.")
+    else:
+        console.print(f"[bold green]Imported[/bold green] {count} metadata entries.")
