@@ -278,6 +278,7 @@ def delete_index(index_name: str, dry_run: bool = False) -> DeletePlan:
 
 def run_doctor(start_path: Path | None = None) -> DoctorReport:
     db_url, source = config.resolve_database_url()
+    migrations.apply_migrations(db_url)
     checks = doctor.run_checks(db_url)
     applied = migrations.list_applied_migrations(db_url)
     pcfg = project_config.discover(start_path)

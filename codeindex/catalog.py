@@ -7,7 +7,7 @@ import psycopg
 from psycopg import sql
 from psycopg.errors import Error as PsycopgError
 
-from . import config, migrations
+from . import config
 from .errors import DatabaseError, NotFoundError
 
 CATALOG_TABLE = "codeindex_indexes"
@@ -30,13 +30,13 @@ class IndexMetadata:
 
 
 def ensure_catalog_table(db_url: str) -> None:
-    migrations.apply_migrations(db_url)
     if not table_exists(db_url, CATALOG_TABLE):
-        raise DatabaseError("Catalog table migration did not create expected table.")
+        raise DatabaseError(
+            f"Catalog table '{CATALOG_TABLE}' is missing. Run migrations first."
+        )
 
 
 def upsert_index_metadata(db_url: str, metadata: IndexMetadata) -> None:
-    ensure_catalog_table(db_url)
     try:
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:
             cur.execute(
@@ -98,7 +98,6 @@ def _row_to_metadata(row: tuple) -> IndexMetadata:
 
 
 def list_index_metadata(db_url: str) -> list[IndexMetadata]:
-    ensure_catalog_table(db_url)
     try:
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:
             cur.execute(
@@ -127,7 +126,6 @@ def list_index_metadata(db_url: str) -> list[IndexMetadata]:
 
 
 def get_index_metadata(db_url: str, index_name: str) -> IndexMetadata | None:
-    ensure_catalog_table(db_url)
     normalized_name = config.normalize_index_name(index_name)
     try:
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:
@@ -161,7 +159,6 @@ def get_index_metadata(db_url: str, index_name: str) -> IndexMetadata | None:
 
 
 def delete_index_metadata(db_url: str, index_name: str) -> bool:
-    ensure_catalog_table(db_url)
     normalized_name = config.normalize_index_name(index_name)
     try:
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:

@@ -83,14 +83,20 @@ def run_checks(db_url: str) -> list[DoctorCheck]:
         raise DatabaseError(f"Doctor failed while validating database: {exc}") from exc
 
     try:
-        applied = migrations.apply_migrations(db_url)
+        applied_migrations = migrations.list_applied_migrations(db_url)
+        latest_version = migrations.latest_migration_version()
+        applied_latest = applied_migrations[-1][0] if applied_migrations else 0
+        up_to_date = applied_latest >= latest_version
         checks.append(
             DoctorCheck(
                 "migrations",
-                True,
-                f"Migrations up to {migrations.latest_migration_version()} are ready."
-                if not applied
-                else f"Applied migrations in this run: {applied}",
+                up_to_date,
+                f"Applied up to version {applied_latest}; latest is {latest_version}."
+                if up_to_date
+                else (
+                    f"Migrations are behind: applied {applied_latest}, "
+                    f"latest is {latest_version}."
+                ),
             )
         )
     except DatabaseError as exc:
