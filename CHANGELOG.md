@@ -32,7 +32,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Catalog access layer (`codeindex.catalog`) now focused exclusively on CRUD operations.
 - Setup/config now persists both `embedding_provider` and `embedding_model`.
 - Catalog metadata now stores embedding provider to keep query/index provider-model alignment.
-- Package version bumped to `1.0.8` to prevent stale install cache behavior.
+- Reindex now honors global embedding configuration from setup/env when explicitly configured, instead of always reusing historical catalog model metadata.
+- Package version bumped to `1.0.9` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
 - Search now uses the indexed catalog model when available, improving query/index model alignment.

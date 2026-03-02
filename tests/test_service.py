@@ -279,6 +279,19 @@ def test_reindex_uses_metadata_embedding_model_when_no_overrides(
     monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
     monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
     monkeypatch.setattr(
+        service.config,
+        "resolve_embedding_provider",
+        lambda explicit_provider=None, config_path=None: ("local", "default"),
+    )
+    monkeypatch.setattr(
+        service.config,
+        "resolve_embedding_model",
+        lambda explicit_model=None, config_path=None, provider=None: (
+            "sentence-transformers/default-model",
+            "default:local",
+        ),
+    )
+    monkeypatch.setattr(
         service.catalog,
         "get_index_metadata",
         lambda _db, _name: catalog.IndexMetadata(
@@ -311,6 +324,66 @@ def test_reindex_uses_metadata_embedding_model_when_no_overrides(
 
     assert captured["embedding_provider"] == "local"
     assert captured["embedding_model"] == "sentence-transformers/metadata-model"
+
+
+def test_reindex_prefers_global_embedding_when_globally_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "repo"
+    source.mkdir()
+
+    monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
+    monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
+    monkeypatch.setattr(
+        service.config,
+        "resolve_embedding_provider",
+        lambda explicit_provider=None, config_path=None: (
+            "local",
+            "config:/tmp/config.toml",
+        ),
+    )
+    monkeypatch.setattr(
+        service.config,
+        "resolve_embedding_model",
+        lambda explicit_model=None, config_path=None, provider=None: (
+            "BAAI/bge-base-en-v1.5",
+            "default:local",
+        ),
+    )
+    monkeypatch.setattr(
+        service.catalog,
+        "get_index_metadata",
+        lambda _db, _name: catalog.IndexMetadata(
+            index_name="demo_index",
+            source_path=str(source),
+            include_patterns=("*.py",),
+            exclude_patterns=(".git/**",),
+            embedding_provider="local",
+            embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            min_chunk_size=config.MIN_CHUNK_SIZE,
+        ),
+    )
+    monkeypatch.setattr(
+        service.project_config,
+        "discover",
+        lambda _path: project_config.ProjectConfig(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _run(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"flow": {"rows": 1}}
+
+    monkeypatch.setattr(service.indexer, "run", _run)
+
+    service.reindex_codebase(service.ReindexInput(name="demo_index"))
+
+    assert captured["embedding_provider"] == "local"
+    assert captured["embedding_model"] == "BAAI/bge-base-en-v1.5"
 
 
 def test_search_uses_default_embedding_model_when_metadata_missing(

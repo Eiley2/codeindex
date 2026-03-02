@@ -212,16 +212,29 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
     else:
         base_excluded = list(config.DEFAULT_EXCLUDED_PATTERNS)
     excluded = base_excluded + list(payload.exclude)
+    global_provider, provider_source = config.resolve_embedding_provider()
+    provider_source_is_default = provider_source == "default"
+    provider_explicit = (
+        payload.embedding_provider is not None or pcfg.embedding_provider is not None
+    )
     embedding_provider = config.validate_embedding_provider(
         payload.embedding_provider
         or pcfg.embedding_provider
+        or (None if provider_source_is_default else global_provider)
         or (metadata.embedding_provider if metadata is not None else None)
-        or config.get_default_embedding_provider()
+        or global_provider
     )
-    global_model, _ = config.resolve_embedding_model(provider=embedding_provider)
+    global_model, model_source = config.resolve_embedding_model(provider=embedding_provider)
+    model_source_is_configured = model_source.startswith(("env:", ".env:", "config:"))
+    prefer_global_model = (
+        provider_explicit
+        or (not provider_source_is_default)
+        or model_source_is_configured
+    )
     embedding_model = config.validate_embedding_model_name(
         payload.embedding_model
         or pcfg.embedding_model
+        or (global_model if prefer_global_model else None)
         or (metadata.embedding_model if metadata is not None else None)
         or global_model
     )
