@@ -74,6 +74,8 @@ class IndexOperationResult:
     stats: dict
     resolved_name: str
     project_config_file: Path | None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
 
 
 def _resolve_limit(
@@ -170,6 +172,8 @@ def index_codebase(payload: IndexInput) -> IndexOperationResult:
         stats=stats,
         resolved_name=resolved_name,
         project_config_file=pcfg.source_file,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
     )
 
 
@@ -306,6 +310,8 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
         stats=stats,
         resolved_name=normalized_name,
         project_config_file=pcfg.source_file,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
     )
 
 

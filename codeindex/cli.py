@@ -333,6 +333,11 @@ def index(
     info = Table.grid(padding=(0, 2))
     info.add_row("[bold]Path[/bold]", str(path))
     info.add_row("[bold]Resolved Name[/bold]", result.resolved_name)
+    if result.embedding_provider and result.embedding_model:
+        info.add_row(
+            "[bold]Embeddings[/bold]",
+            f"{result.embedding_provider} | {result.embedding_model}",
+        )
     if include:
         info.add_row("[bold]Include[/bold]", ", ".join(include))
     if exclude:
@@ -569,6 +574,11 @@ def reindex(
         _handle_error(exc, debug)
 
     console.print("\n[bold green]Reindex completed.[/bold green]")
+    if result.embedding_provider and result.embedding_model:
+        console.print(
+            "Embeddings: "
+            f"[bold]{result.embedding_provider}[/bold] | {result.embedding_model}"
+        )
     if result.project_config_file is not None:
         console.print(f"Project config: {result.project_config_file}")
     if result.stats:

@@ -122,6 +122,8 @@ def test_index_uses_project_defaults_when_name_is_omitted(
             stats={},
             resolved_name="repo_default",
             project_config_file=project_dir / ".codeindex.toml",
+            embedding_provider="local",
+            embedding_model="sentence-transformers/all-MiniLM-L6-v2",
         ),
     )
 
@@ -129,6 +131,7 @@ def test_index_uses_project_defaults_when_name_is_omitted(
 
     assert result.exit_code == 0
     assert "repo_default" in result.output
+    assert "local | sentence-transformers/all-MiniLM-L6-v2" in result.output
 
 
 def test_index_passes_embedding_model_to_service(
@@ -147,6 +150,8 @@ def test_index_passes_embedding_model_to_service(
             stats={},
             resolved_name="repo_default",
             project_config_file=None,
+            embedding_provider="openrouter",
+            embedding_model="openai/text-embedding-3-small",
         )
 
     monkeypatch.setattr(cli_module.service, "index_codebase", _index)
@@ -166,6 +171,7 @@ def test_index_passes_embedding_model_to_service(
     assert result.exit_code == 0
     assert captured["embedding_provider"] == "openrouter"
     assert captured["embedding_model"] == "openai/text-embedding-3-small"
+    assert "openrouter | openai/text-embedding-3-small" in result.output
 
 
 def test_export_calls_service_and_writes_count(
@@ -572,6 +578,8 @@ def test_reindex_passes_embedding_model_to_service(monkeypatch: pytest.MonkeyPat
             stats={},
             resolved_name="demo_index",
             project_config_file=None,
+            embedding_provider="openrouter",
+            embedding_model="openai/text-embedding-3-small",
         )
 
     monkeypatch.setattr(cli_module.service, "reindex_codebase", _reindex)
@@ -591,6 +599,9 @@ def test_reindex_passes_embedding_model_to_service(monkeypatch: pytest.MonkeyPat
     assert result.exit_code == 0
     assert captured["embedding_provider"] == "openrouter"
     assert captured["embedding_model"] == "openai/text-embedding-3-small"
+    assert "Embeddings:" in result.output
+    assert "openrouter" in result.output
+    assert "openai/text-embedding-3-small" in result.output
 
 
 def test_skills_set_writes_codex_and_claude_templates(
