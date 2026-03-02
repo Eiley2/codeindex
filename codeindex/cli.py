@@ -79,6 +79,23 @@ def _read_config_str(path: Path, key: str) -> str | None:
     return None
 
 
+def _complete_index_name(
+    ctx: click.Context,
+    param: click.Parameter,
+    incomplete: str,
+) -> list[str]:
+    del ctx, param
+    try:
+        names = service.list_index_names()
+    except Exception:
+        return []
+
+    prefix = config.slugify(incomplete).lower()
+    if not prefix:
+        return list(names)
+    return [name for name in names if name.startswith(prefix)]
+
+
 def _zsh_completion_block() -> str:
     return "\n".join(
         [
@@ -358,7 +375,7 @@ def index(
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", shell_complete=_complete_index_name)
 @click.argument("query")
 @click.option(
     "--top-k",
@@ -378,6 +395,17 @@ def index(
     metavar="N",
     help="Characters to show per result.",
 )
+@click.option(
+    "--embedding-provider",
+    type=click.Choice(list(config.EMBEDDING_PROVIDERS)),
+    default=None,
+    help="Override embedding provider for query generation.",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help="Override embedding model for query generation.",
+)
 @click.pass_context
 def search(
     ctx: click.Context,
@@ -385,6 +413,8 @@ def search(
     query: str,
     top_k: int,
     snippet_length: int,
+    embedding_provider: str | None,
+    embedding_model: str | None,
 ) -> None:
     """Search NAME index for QUERY."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
@@ -394,7 +424,13 @@ def search(
 
     try:
         clean_name = config.normalize_index_name(name)
-        results = service.search_index(clean_name, clean_query, top_k=top_k)
+        results = service.search_index(
+            clean_name,
+            clean_query,
+            top_k=top_k,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+        )
     except Exception as exc:
         _handle_error(exc, debug)
 
@@ -481,7 +517,7 @@ def list_indexes(ctx: click.Context) -> None:
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", shell_complete=_complete_index_name)
 @click.option(
     "--path",
     type=click.Path(
@@ -587,7 +623,7 @@ def reindex(
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", shell_complete=_complete_index_name)
 @click.option("--yes", is_flag=True, help="Delete without confirmation prompt.")
 @click.option(
     "--dry-run",
@@ -681,7 +717,7 @@ def doctor_cmd(ctx: click.Context) -> None:
         resolve_path=True,
     ),
 )
-@click.argument("name", required=False)
+@click.argument("name", required=False, shell_complete=_complete_index_name)
 @click.pass_context
 def export_metadata(ctx: click.Context, output: Path, name: str | None) -> None:
     """Export index metadata to a JSON file."""

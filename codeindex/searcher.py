@@ -359,4 +359,13 @@ def search(
                     )
                 return results
     except PsycopgError as exc:
+        detail = str(exc)
+        if "different vector dimensions" in detail.lower():
+            raise ValidationError(
+                "Search embedding dimension does not match the stored index vectors. "
+                f"Using {resolved_embedding_provider}/{resolved_embedding_model}. "
+                "The index was likely built with a different embedding model. "
+                "Reindex with --reset, or rerun search with a compatible "
+                "--embedding-provider/--embedding-model."
+            ) from exc
         raise DatabaseError(f"Search query failed: {exc}") from exc

@@ -271,7 +271,7 @@ def test_search_shows_line_range_when_available(
     monkeypatch.setattr(
         cli_module.service,
         "search_index",
-        lambda _name, _query, top_k: [
+        lambda _name, _query, top_k, embedding_provider=None, embedding_model=None: [
             searcher_types.SearchResult(
                 rank=1,
                 score=0.91,
@@ -288,6 +288,45 @@ def test_search_shows_line_range_when_available(
 
     assert result.exit_code == 0
     assert "app/main.py:12-14" in result.output
+
+
+def test_search_passes_embedding_overrides_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+
+    def _search(
+        _name: str,
+        _query: str,
+        top_k: int,
+        embedding_provider: str | None = None,
+        embedding_model: str | None = None,
+    ) -> list[searcher_types.SearchResult]:
+        captured["top_k"] = top_k
+        captured["embedding_provider"] = embedding_provider
+        captured["embedding_model"] = embedding_model
+        return []
+
+    monkeypatch.setattr(cli_module.service, "search_index", _search)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "search",
+            "demo-index",
+            "handler",
+            "--embedding-provider",
+            "local",
+            "--embedding-model",
+            "sentence-transformers/all-MiniLM-L6-v2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["top_k"] == 10
+    assert captured["embedding_provider"] == "local"
+    assert captured["embedding_model"] == "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def test_check_update_reports_available_update(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -136,8 +136,18 @@ codeindex search <name> "<query>" [options]
 |--------|---------|-------------|
 | `-k, --top-k N` | 10 | Number of results to return. |
 | `-s, --snippet-length N` | 500 | Characters to display per result. |
+| `--embedding-provider {local,openrouter}` | auto | Override query embedding provider. |
+| `--embedding-model MODEL_ID` | auto | Override query embedding model. |
 
 Results are ranked by cosine similarity score and color-coded (green ≥ 0.4, yellow ≥ 0.25, red below). When the stored chunk location includes line metadata, output also shows line/range (for example `path/to/file.py:42-58`).
+
+For legacy/unmanaged indexes created with an older model, you can force a compatible query model:
+
+```bash
+codeindex search <name> "<query>" \
+  --embedding-provider local \
+  --embedding-model "sentence-transformers/all-MiniLM-L6-v2"
+```
 
 ### `reindex`
 

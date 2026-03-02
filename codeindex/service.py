@@ -315,29 +315,43 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
     )
 
 
-def search_index(index_name: str, query: str, top_k: int) -> list[searcher.SearchResult]:
+def search_index(
+    index_name: str,
+    query: str,
+    top_k: int,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
+) -> list[searcher.SearchResult]:
     start = perf_counter()
     db_url = config.get_database_url()
     migrations.apply_migrations(db_url)
     normalized_name = config.normalize_index_name(index_name)
     metadata = catalog.get_index_metadata(db_url, normalized_name)
-    embedding_provider = (
-        metadata.embedding_provider
-        if metadata is not None
-        else config.get_default_embedding_provider()
+    resolved_embedding_provider = (
+        config.validate_embedding_provider(embedding_provider)
+        if embedding_provider is not None
+        else (
+            metadata.embedding_provider
+            if metadata is not None
+            else config.get_default_embedding_provider()
+        )
     )
-    embedding_model = (
-        metadata.embedding_model
-        if metadata is not None
-        else config.resolve_embedding_model(provider=embedding_provider)[0]
+    resolved_embedding_model = (
+        config.validate_embedding_model_name(embedding_model)
+        if embedding_model is not None
+        else (
+            metadata.embedding_model
+            if metadata is not None
+            else config.resolve_embedding_model(provider=resolved_embedding_provider)[0]
+        )
     )
     results = searcher.search(
         normalized_name,
         query,
         top_k=top_k,
         db_url=db_url,
-        embedding_provider=embedding_provider,
-        embedding_model=embedding_model,
+        embedding_provider=resolved_embedding_provider,
+        embedding_model=resolved_embedding_model,
     )
     if metadata is not None:
         searcher.attach_line_numbers(results, Path(metadata.source_path))
@@ -376,6 +390,15 @@ def list_indexes() -> IndexListResult:
 
     unmanaged = tuple(searcher.list_indexes(db_url))
     return IndexListResult(managed=(), unmanaged=unmanaged)
+
+
+def list_index_names() -> tuple[str, ...]:
+    db_url = config.get_database_url()
+    migrations.apply_migrations(db_url)
+
+    names = [item.index_name for item in catalog.list_index_metadata(db_url)]
+    names.extend(searcher.list_indexes(db_url))
+    return tuple(dict.fromkeys(names))
 
 
 def preview_delete(index_name: str) -> DeletePlan:

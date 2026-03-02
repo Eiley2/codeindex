@@ -35,7 +35,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Catalog metadata now stores embedding provider to keep query/index provider-model alignment.
 - Reindex now honors global embedding configuration from setup/env when explicitly configured, instead of always reusing historical catalog model metadata.
 - CLI index and reindex output now clearly show the resolved embedding provider and model used for the run.
-- Package version bumped to `1.0.11` to prevent stale install cache behavior.
+- `codeindex search` now supports `--embedding-provider` and `--embedding-model`, and reports vector dimension mismatches as actionable validation errors.
+- Package version bumped to `1.0.12` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
 - Search now uses the indexed catalog model when available, improving query/index model alignment.
