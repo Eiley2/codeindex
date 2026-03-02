@@ -7,7 +7,6 @@ Use `codeindex` for semantic search over this repository before answering questi
 1. Check for existing indexes:
 ```bash
 codeindex list
-codeindex status
 ```
 
 2. Create an index if none exists:
@@ -32,5 +31,5 @@ codeindex delete <index_name> --dry-run
 
 ## Notes
 
-- `codeindex list` and `codeindex status` show all available indexes and their metadata (path, chunk count, last indexed).
+- `codeindex list` shows available indexes and metadata (index name and source path).
 - If this repository defines `exclude_patterns` in `.codeindex.toml`, the built-in exclude defaults are replaced. Ensure `node_modules/**` and `.venv/**` are present in the custom list to avoid slow indexing.

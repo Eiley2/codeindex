@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import config, service, updater
+from . import agent_skills, config, service, updater
 from .errors import ConfigurationError, DatabaseError, NotFoundError, ValidationError
 
 console = Console()
@@ -261,8 +261,16 @@ def list_indexes(ctx: click.Context) -> None:
         table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
         table.add_column("Index", style="bold white")
         table.add_column("Path", style="dim")
+        table.add_column("Chunks", justify="right")
+        table.add_column("Last Indexed", style="dim")
         for item in listing.managed:
-            table.add_row(item.index_name, item.source_path)
+            chunks = str(item.chunks) if item.chunks is not None else "missing"
+            last_indexed = (
+                item.last_indexed_at.isoformat(timespec="seconds")
+                if item.last_indexed_at
+                else "n/a"
+            )
+            table.add_row(item.index_name, item.source_path, chunks, last_indexed)
         console.print()
         console.print(table)
         return
@@ -277,41 +285,6 @@ def list_indexes(ctx: click.Context) -> None:
     table.add_column("Unmanaged Index", style="bold white")
     for name in listing.unmanaged:
         table.add_row(name)
-    console.print()
-    console.print(table)
-
-
-@cli.command()
-@click.argument("name", required=False)
-@click.pass_context
-def status(ctx: click.Context, name: str | None) -> None:
-    """Show index status and metadata."""
-    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
-
-    try:
-        items = service.status(_normalize_optional_name(name))
-    except Exception as exc:
-        _handle_error(exc, debug)
-
-    if not items:
-        console.print("[yellow]No catalog metadata found yet. Index a project first.[/yellow]")
-        return
-
-    table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
-    table.add_column("Index", style="bold white")
-    table.add_column("Path", style="dim")
-    table.add_column("Chunks", justify="right")
-    table.add_column("Last Indexed", style="dim")
-
-    for item in items:
-        last_indexed = (
-            item.last_indexed_at.isoformat(timespec="seconds")
-            if item.last_indexed_at
-            else "n/a"
-        )
-        chunks = str(item.chunks) if item.chunks is not None else "missing"
-        table.add_row(item.index_name, item.source_path, chunks, last_indexed)
-
     console.print()
     console.print(table)
 
@@ -611,3 +584,149 @@ def update(ctx: click.Context, repo: str, path: Path | None) -> None:
 
     console.print(f"[bold green]Update completed.[/bold green] Source: {source}")
     console.print("Run [bold]hash -r[/bold] if your shell caches command paths.")
+
+
+@cli.group(name="skills")
+def skills_group() -> None:
+    """Install or update agent integration templates."""
+
+
+def _resolve_skill_selection(codex_only: bool, claude_only: bool) -> tuple[bool, bool]:
+    if codex_only and claude_only:
+        raise ValidationError("Use only one of --codex-only or --claude-only.")
+    install_codex = not claude_only
+    install_claude = not codex_only
+    return install_codex, install_claude
+
+
+def _render_skill_status(label: str, path: Path, status: agent_skills.WriteStatus) -> None:
+    if status == "created":
+        console.print(f"[bold green]{label} created:[/bold green] {path}")
+    elif status == "updated":
+        console.print(f"[bold green]{label} updated:[/bold green] {path}")
+    elif status == "unchanged":
+        console.print(f"[cyan]{label} unchanged:[/cyan] {path}")
+    else:
+        console.print(
+            f"[yellow]{label} exists (skipped in set mode):[/yellow] {path}"
+        )
+
+
+@skills_group.command(name="set")
+@click.option(
+    "--codex-home",
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Codex home directory (defaults to $CODEX_HOME or ~/.codex).",
+)
+@click.option(
+    "--claude-file",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=Path("CLAUDE.md"),
+    show_default=True,
+    help="Path to write Claude project instructions.",
+)
+@click.option("--codex-only", is_flag=True, help="Only set Codex skill template.")
+@click.option("--claude-only", is_flag=True, help="Only set Claude template.")
+@click.pass_context
+def skills_set(
+    ctx: click.Context,
+    codex_home: Path | None,
+    claude_file: Path,
+    codex_only: bool,
+    claude_only: bool,
+) -> None:
+    """Set agent templates without overwriting existing files."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        install_codex, install_claude = _resolve_skill_selection(codex_only, claude_only)
+        target_codex_home = codex_home or agent_skills.default_codex_home()
+
+        if install_codex:
+            codex_path = agent_skills.codex_skill_path(target_codex_home)
+            status = agent_skills.write_template(
+                codex_path,
+                agent_skills.CODEX_SKILL_TEMPLATE,
+                mode="set",
+            )
+            _render_skill_status("Codex skill", codex_path, status)
+
+        if install_claude:
+            status = agent_skills.write_template(
+                claude_file,
+                agent_skills.CLAUDE_TEMPLATE,
+                mode="set",
+            )
+            _render_skill_status("Claude template", claude_file, status)
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+
+@skills_group.command(name="update")
+@click.option(
+    "--codex-home",
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Codex home directory (defaults to $CODEX_HOME or ~/.codex).",
+)
+@click.option(
+    "--claude-file",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=Path("CLAUDE.md"),
+    show_default=True,
+    help="Path to write Claude project instructions.",
+)
+@click.option("--codex-only", is_flag=True, help="Only update Codex skill template.")
+@click.option("--claude-only", is_flag=True, help="Only update Claude template.")
+@click.pass_context
+def skills_update(
+    ctx: click.Context,
+    codex_home: Path | None,
+    claude_file: Path,
+    codex_only: bool,
+    claude_only: bool,
+) -> None:
+    """Update agent templates, overwriting existing files."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        install_codex, install_claude = _resolve_skill_selection(codex_only, claude_only)
+        target_codex_home = codex_home or agent_skills.default_codex_home()
+
+        if install_codex:
+            codex_path = agent_skills.codex_skill_path(target_codex_home)
+            status = agent_skills.write_template(
+                codex_path,
+                agent_skills.CODEX_SKILL_TEMPLATE,
+                mode="update",
+            )
+            _render_skill_status("Codex skill", codex_path, status)
+
+        if install_claude:
+            status = agent_skills.write_template(
+                claude_file,
+                agent_skills.CLAUDE_TEMPLATE,
+                mode="update",
+            )
+            _render_skill_status("Claude template", claude_file, status)
+    except Exception as exc:
+        _handle_error(exc, debug)

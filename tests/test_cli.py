@@ -10,7 +10,7 @@ from codeindex import searcher as searcher_types
 from codeindex import service as service_types
 from codeindex import updater as updater_types
 from codeindex.doctor import DoctorCheck
-from codeindex.errors import ConfigurationError, NotFoundError
+from codeindex.errors import ConfigurationError
 
 cli_module = importlib.import_module("codeindex.cli")
 service_module = importlib.import_module("codeindex.service")
@@ -32,20 +32,31 @@ def test_list_returns_configuration_exit_code(
     assert "missing db url" in result.output
 
 
-def test_status_returns_not_found_exit_code(
+def test_list_shows_chunk_count_for_managed_indexes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = CliRunner()
+    monkeypatch.setattr(
+        cli_module.service,
+        "list_indexes",
+        lambda: service_module.IndexListResult(
+            managed=(
+                service_module.ManagedIndex(
+                    index_name="demo_index",
+                    source_path="/tmp/demo",
+                    chunks=123,
+                    last_indexed_at=None,
+                ),
+            ),
+            unmanaged=(),
+        ),
+    )
 
-    def _raise(_name: str | None = None) -> list[service_types.StatusItem]:
-        raise NotFoundError("Index 'missing_index' not found")
+    result = runner.invoke(cli_module.cli, ["list"])
 
-    monkeypatch.setattr(cli_module.service, "status", _raise)
-
-    result = runner.invoke(cli_module.cli, ["status", "missing_index"])
-
-    assert result.exit_code == 4
-    assert "not found" in result.output.lower()
+    assert result.exit_code == 0
+    assert "123" in result.output
+    assert "demo_index" in result.output
 
 
 def test_doctor_returns_exit_6_when_checks_fail(
@@ -275,3 +286,79 @@ def test_update_uses_local_path_when_provided(
     assert result.exit_code == 0
     assert called["source"] == str(repo_path)
     assert "Update completed" in result.output
+
+
+def test_skills_set_writes_codex_and_claude_templates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    codex_home = tmp_path / ".codex"
+    claude_file = tmp_path / "CLAUDE.md"
+
+    monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "skills",
+            "set",
+            "--codex-home",
+            str(codex_home),
+            "--claude-file",
+            str(claude_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    codex_skill = codex_home / "skills" / "codeindex-local" / "SKILL.md"
+    assert codex_skill.is_file()
+    assert claude_file.is_file()
+    assert "codeindex list" in codex_skill.read_text(encoding="utf-8")
+    assert "codeindex list" in claude_file.read_text(encoding="utf-8")
+
+
+def test_skills_update_overwrites_existing_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    codex_home = tmp_path / ".codex"
+    claude_file = tmp_path / "CLAUDE.md"
+    codex_skill = codex_home / "skills" / "codeindex-local" / "SKILL.md"
+    codex_skill.parent.mkdir(parents=True, exist_ok=True)
+    codex_skill.write_text("old", encoding="utf-8")
+    claude_file.write_text("old", encoding="utf-8")
+
+    monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "skills",
+            "update",
+            "--codex-home",
+            str(codex_home),
+            "--claude-file",
+            str(claude_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "old" not in codex_skill.read_text(encoding="utf-8")
+    assert "old" not in claude_file.read_text(encoding="utf-8")
+
+
+def test_skills_rejects_conflicting_selection_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = CliRunner()
+    monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["skills", "set", "--codex-only", "--claude-only"],
+    )
+
+    assert result.exit_code == 3
+    assert "only one" in result.output.lower()

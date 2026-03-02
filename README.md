@@ -58,7 +58,7 @@ codeindex doctor
 # 7) Index this same repository and query it
 codeindex index "$(pwd)" codeindex_demo
 codeindex search codeindex_demo "how does reindex work" -k 5
-codeindex status codeindex_demo
+codeindex list
 ```
 
 Run from any directory after install:
@@ -152,15 +152,7 @@ List all available indexes.
 codeindex list
 ```
 
-### `status`
-
-Show index metadata: source path, chunk count, and last indexed timestamp.
-
-```bash
-codeindex status [name]
-```
-
-Omit `name` to show all indexes.
+For managed indexes, output includes source path, chunk count, and last indexed timestamp.
 
 ### `delete`
 
@@ -210,6 +202,22 @@ codeindex update --path /absolute/path/to/codeindex
 ```
 
 The CLI also shows a lightweight update notification when a newer release is detected.
+
+### `skills set` / `skills update`
+
+Set or update Codex/Claude integration templates.
+
+```bash
+codeindex skills set
+codeindex skills update
+```
+
+Target only one integration:
+
+```bash
+codeindex skills set --codex-only
+codeindex skills update --claude-only
+```
 
 ### `export` / `import`
 

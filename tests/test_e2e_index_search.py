@@ -59,7 +59,7 @@ def authentication_middleware(request: Request) -> bool:
 
 @pytest.mark.e2e
 @pytest.mark.integration
-def test_e2e_lifecycle_index_status_delete(
+def test_e2e_lifecycle_index_list_delete(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -90,9 +90,9 @@ def test_e2e_lifecycle_index_status_delete(
             )
         )
 
-        status_items = service.status(index_name)
-        assert len(status_items) == 1
-        assert status_items[0].index_name == index_name
+        listing = service.list_indexes()
+        assert len(listing.managed) == 1
+        assert listing.managed[0].index_name == index_name
 
         search_results = service.search_index(index_name, "return 42", top_k=3)
         assert search_results
@@ -103,7 +103,7 @@ def test_e2e_lifecycle_index_status_delete(
         service.delete_index(index_name, dry_run=False)
 
         with pytest.raises(NotFoundError):
-            service.status(index_name)
+            service.search_index(index_name, "return 42", top_k=3)
     finally:
         with suppress(Exception):
             service.delete_index(index_name, dry_run=False)

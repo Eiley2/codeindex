@@ -11,6 +11,12 @@ The Codex skill teaches an agent how to discover, index, query, and maintain `co
 ### Installation
 
 ```bash
+codeindex skills set --codex-only
+```
+
+Manual fallback:
+
+```bash
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 mkdir -p "$CODEX_HOME/skills/codeindex-local"
 cp integrations/codex-skill/SKILL.md \
@@ -23,7 +29,7 @@ The skill provides the agent with the following workflow:
 
 | Step | Command | Purpose |
 |------|---------|---------|
-| Discover | `codeindex list` / `codeindex status` | Check which indexes exist and their metadata |
+| Discover | `codeindex list` | Check which indexes exist and their metadata |
 | Index | `codeindex index <path> [name]` | Create a new index for a repository |
 | Search | `codeindex search <name> "<query>" -k 10` | Retrieve semantically relevant code chunks |
 | Update | `codeindex reindex <name>` | Refresh the index after code changes |
@@ -45,6 +51,12 @@ The Claude integration template provides project-level instructions for Claude C
 Copy the template to the root of the repository you want to integrate with:
 
 ```bash
+codeindex skills set --claude-only
+```
+
+Manual fallback:
+
+```bash
 cp integrations/claude/CLAUDE.md.example CLAUDE.md
 ```
 
@@ -54,7 +66,7 @@ Or merge its contents into an existing `CLAUDE.md`.
 
 The template instructs Claude to follow a standard `codeindex` workflow before answering questions about the codebase:
 
-1. Check for existing indexes with `codeindex list` and `codeindex status`.
+1. Check for existing indexes with `codeindex list`.
 2. Create an index with `codeindex index . [name]` if none exists.
 3. Query with `codeindex search <name> "<query>" -k 10` to retrieve relevant context.
 4. Refresh with `codeindex reindex <name>` when the codebase has changed.

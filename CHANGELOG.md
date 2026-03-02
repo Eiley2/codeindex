@@ -16,8 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Additional test coverage for edge cases and full index lifecycle paths.
 - Self-update commands: `codeindex check-update` and `codeindex update`.
 - Automatic (cached) update notification when a newer release is available.
+- Agent template management commands: `codeindex skills set` and `codeindex skills update`.
 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.
 - Catalog access layer (`codeindex.catalog`) now focused exclusively on CRUD operations.
-- Package version bumped to `1.0.2` to prevent stale install cache behavior.
+- Package version bumped to `1.0.3` to prevent stale install cache behavior.
+- Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
+- `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.

@@ -37,7 +37,7 @@ class ReindexInput:
 
 
 @dataclass(frozen=True)
-class StatusItem:
+class ManagedIndex:
     index_name: str
     source_path: str
     chunks: int | None
@@ -46,7 +46,7 @@ class StatusItem:
 
 @dataclass(frozen=True)
 class IndexListResult:
-    managed: tuple[catalog.IndexMetadata, ...]
+    managed: tuple[ManagedIndex, ...]
     unmanaged: tuple[str, ...]
 
 
@@ -284,43 +284,26 @@ def list_indexes() -> IndexListResult:
     db_url = config.get_database_url()
     migrations.apply_migrations(db_url)
 
-    managed = tuple(catalog.list_index_metadata(db_url))
-    if managed:
-        return IndexListResult(managed=managed, unmanaged=())
-
-    unmanaged = tuple(searcher.list_indexes(db_url))
-    return IndexListResult(managed=(), unmanaged=unmanaged)
-
-
-def status(index_name: str | None = None) -> list[StatusItem]:
-    db_url = config.get_database_url()
-    migrations.apply_migrations(db_url)
-
-    if index_name:
-        normalized_name = config.normalize_index_name(index_name)
-        metadata = catalog.get_index_metadata(db_url, normalized_name)
-        if metadata is None:
-            raise NotFoundError(f"Index '{normalized_name}' not found in catalog.")
-        items = [metadata]
-    else:
-        items = catalog.list_index_metadata(db_url)
-
-    result: list[StatusItem] = []
-    for item in items:
+    metadata_items = catalog.list_index_metadata(db_url)
+    managed: list[ManagedIndex] = []
+    for item in metadata_items:
         try:
             chunks = catalog.index_document_count(db_url, item.index_name)
         except NotFoundError:
             chunks = None
-        result.append(
-            StatusItem(
+        managed.append(
+            ManagedIndex(
                 index_name=item.index_name,
                 source_path=item.source_path,
                 chunks=chunks,
                 last_indexed_at=item.last_indexed_at,
             )
         )
+    if managed:
+        return IndexListResult(managed=tuple(managed), unmanaged=())
 
-    return result
+    unmanaged = tuple(searcher.list_indexes(db_url))
+    return IndexListResult(managed=(), unmanaged=unmanaged)
 
 
 def preview_delete(index_name: str) -> DeletePlan:
