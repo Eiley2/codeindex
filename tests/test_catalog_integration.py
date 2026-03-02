@@ -64,6 +64,10 @@ def test_delete_index_tables(integration_db_url: str) -> None:
         )
         conn.commit()
 
+    listed = catalog.list_index_tables(integration_db_url, index_name)
+    assert embedding_table in listed
+    assert tracking_table in listed
+
     dropped = catalog.delete_index_tables(integration_db_url, index_name)
 
     assert embedding_table in dropped

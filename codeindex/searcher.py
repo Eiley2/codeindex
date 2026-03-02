@@ -76,22 +76,27 @@ def _resolve_table(db_url: str, index_name: str) -> str:
     raise NotFoundError(f"Index '{index_name}' not found. {hint}")
 
 
-def search(index_name: str, query: str, top_k: int = config.DEFAULT_TOP_K) -> list[SearchResult]:
+def search(
+    index_name: str,
+    query: str,
+    top_k: int = config.DEFAULT_TOP_K,
+    db_url: str | None = None,
+) -> list[SearchResult]:
     if top_k < 1:
         raise ValidationError("--top-k must be >= 1.")
     if not query.strip():
         raise ValidationError("Query cannot be empty.")
 
-    db_url = config.get_database_url()
-    table = _resolve_table(db_url, index_name)
+    effective_db_url = db_url or config.get_database_url()
+    table = _resolve_table(effective_db_url, index_name)
 
     cocoindex.init(
-        cocoindex.Settings(database=cocoindex.DatabaseConnectionSpec(url=db_url))
+        cocoindex.Settings(database=cocoindex.DatabaseConnectionSpec(url=effective_db_url))
     )
     query_vector = _text_to_embedding.eval(query)
 
     try:
-        with psycopg.connect(db_url) as conn:
+        with psycopg.connect(effective_db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 query_sql = sql.SQL(

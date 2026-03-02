@@ -11,14 +11,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import catalog, config, doctor, indexer, searcher
-from .errors import (
-    CodeIndexError,
-    ConfigurationError,
-    DatabaseError,
-    NotFoundError,
-    ValidationError,
-)
+from . import config, service
+from .errors import ConfigurationError, DatabaseError, NotFoundError, ValidationError
 
 console = Console()
 
@@ -49,13 +43,10 @@ def _handle_error(exc: Exception, debug: bool) -> NoReturn:
     raise click.exceptions.Exit(code=_error_exit_code(exc))
 
 
-def _validate_index_name(
-    _ctx: click.Context, _param: click.Parameter, value: str
-) -> str:
-    try:
-        return config.normalize_index_name(value)
-    except CodeIndexError as exc:
-        raise click.BadParameter(str(exc)) from exc
+def _normalize_optional_name(name: str | None) -> str | None:
+    if name is None:
+        return None
+    return config.normalize_index_name(name)
 
 
 @click.group()
@@ -82,7 +73,7 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
         resolve_path=True,
     ),
 )
-@click.argument("name", callback=_validate_index_name)
+@click.argument("name", required=False)
 @click.option(
     "--include",
     "-i",
@@ -107,55 +98,51 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
 def index(
     ctx: click.Context,
     path: Path,
-    name: str,
+    name: str | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     reset: bool,
 ) -> None:
-    """Index a codebase at PATH under the given NAME."""
+    """Index a codebase at PATH under the optional NAME."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
 
-    included = list(include) or list(config.DEFAULT_INCLUDED_PATTERNS)
-    excluded = list(config.DEFAULT_EXCLUDED_PATTERNS) + list(exclude)
-
-    console.print()
-    info = Table.grid(padding=(0, 2))
-    info.add_row("[bold]Path[/bold]", str(path))
-    info.add_row("[bold]Name[/bold]", name)
-    info.add_row("[bold]Include[/bold]", ", ".join(included))
-    info.add_row("[bold]Exclude[/bold]", ", ".join(excluded))
-    if reset:
-        info.add_row("[bold]Mode[/bold]", "[yellow]full reset[/yellow]")
-    console.print(
-        Panel(info, title="[bold cyan]Indexing[/bold cyan]", border_style="cyan")
-    )
-    console.print()
-
     try:
-        db_url = config.get_database_url()
-        stats = indexer.run(
-            path=str(path),
-            name=name,
-            included=included,
-            excluded=excluded,
-            reset=reset,
-            db_url=db_url,
+        result = service.index_codebase(
+            service.IndexInput(
+                path=path,
+                name=_normalize_optional_name(name),
+                include=include,
+                exclude=exclude,
+                reset=reset,
+            )
         )
     except Exception as exc:
         _handle_error(exc, debug)
 
-    console.print("\n[bold green]Done.[/bold green]")
-    if stats:
+    info = Table.grid(padding=(0, 2))
+    info.add_row("[bold]Path[/bold]", str(path))
+    info.add_row("[bold]Resolved Name[/bold]", result.resolved_name)
+    if include:
+        info.add_row("[bold]Include[/bold]", ", ".join(include))
+    if exclude:
+        info.add_row("[bold]Extra Exclude[/bold]", ", ".join(exclude))
+    if result.project_config_file is not None:
+        info.add_row("[bold]Project Config[/bold]", str(result.project_config_file))
+
+    console.print()
+    console.print(Panel(info, title="[bold cyan]Indexed[/bold cyan]", border_style="cyan"))
+
+    if result.stats:
         table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
         table.add_column("Flow", style="bold white")
         table.add_column("Stats", style="dim")
-        for flow_name, flow_stats in stats.items():
-            table.add_row(flow_name, str(flow_stats))
+        for flow_name, flow_stats in result.stats.items():
+            table.add_row(str(flow_name), str(flow_stats))
         console.print(table)
 
 
 @cli.command()
-@click.argument("name", callback=_validate_index_name)
+@click.argument("name")
 @click.argument("query")
 @click.option(
     "--top-k",
@@ -190,7 +177,8 @@ def search(
         raise click.ClickException("Query cannot be empty.")
 
     try:
-        results = searcher.search(name, clean_query, top_k=top_k)
+        clean_name = config.normalize_index_name(name)
+        results = service.search_index(clean_name, clean_query, top_k=top_k)
     except Exception as exc:
         _handle_error(exc, debug)
 
@@ -202,7 +190,7 @@ def search(
     console.print(
         Panel(
             (
-                f"[bold]{query}[/bold]  [dim]·[/dim]  [cyan]{name}[/cyan]  "
+                f"[bold]{clean_query}[/bold]  [dim]·[/dim]  [cyan]{clean_name}[/cyan]  "
                 f"[dim]·[/dim]  {len(results)} results"
             ),
             border_style="cyan",
@@ -213,7 +201,6 @@ def search(
         score_color = (
             "green" if result.score >= 0.4 else "yellow" if result.score >= 0.25 else "red"
         )
-
         snippet = result.text[:snippet_length].strip().replace("\n", " ")
         if len(result.text) > snippet_length:
             snippet += "…"
@@ -236,33 +223,30 @@ def list_indexes(ctx: click.Context) -> None:
     """List all available indexes."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
     try:
-        db_url = config.get_database_url()
-        indexed = catalog.list_index_metadata(db_url)
-        if indexed:
-            table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
-            table.add_column("Index", style="bold white")
-            table.add_column("Path", style="dim")
-            for item in indexed:
-                table.add_row(item.index_name, item.source_path)
-            console.print()
-            console.print(table)
-            return
-
-        indexes = searcher.list_indexes(db_url)
+        listing = service.list_indexes()
     except Exception as exc:
         _handle_error(exc, debug)
 
-    if not indexes:
+    if listing.managed:
+        table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
+        table.add_column("Index", style="bold white")
+        table.add_column("Path", style="dim")
+        for item in listing.managed:
+            table.add_row(item.index_name, item.source_path)
+        console.print()
+        console.print(table)
+        return
+
+    if not listing.unmanaged:
         console.print(
-            "[yellow]No indexes found. Run 'codeindex index <path> <name>' first.[/yellow]"
+            "[yellow]No indexes found. Run 'codeindex index <path> [name]' first.[/yellow]"
         )
         return
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
-    table.add_column("Index", style="bold white")
-    for name in indexes:
+    table.add_column("Unmanaged Index", style="bold white")
+    for name in listing.unmanaged:
         table.add_row(name)
-
     console.print()
     console.print(table)
 
@@ -275,15 +259,7 @@ def status(ctx: click.Context, name: str | None) -> None:
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
 
     try:
-        db_url = config.get_database_url()
-        if name:
-            normalized_name = config.normalize_index_name(name)
-            one = catalog.get_index_metadata(db_url, normalized_name)
-            if one is None:
-                raise NotFoundError(f"Index '{normalized_name}' not found in catalog.")
-            items = [one]
-        else:
-            items = catalog.list_index_metadata(db_url)
+        items = service.status(_normalize_optional_name(name))
     except Exception as exc:
         _handle_error(exc, debug)
 
@@ -298,15 +274,12 @@ def status(ctx: click.Context, name: str | None) -> None:
     table.add_column("Last Indexed", style="dim")
 
     for item in items:
-        try:
-            chunks = str(catalog.index_document_count(db_url, item.index_name))
-        except NotFoundError:
-            chunks = "missing"
         last_indexed = (
             item.last_indexed_at.isoformat(timespec="seconds")
             if item.last_indexed_at
             else "n/a"
         )
+        chunks = str(item.chunks) if item.chunks is not None else "missing"
         table.add_row(item.index_name, item.source_path, chunks, last_indexed)
 
     console.print()
@@ -314,7 +287,7 @@ def status(ctx: click.Context, name: str | None) -> None:
 
 
 @cli.command()
-@click.argument("name", callback=_validate_index_name)
+@click.argument("name")
 @click.option(
     "--path",
     type=click.Path(
@@ -333,7 +306,7 @@ def status(ctx: click.Context, name: str | None) -> None:
     "-i",
     multiple=True,
     metavar="PATTERN",
-    help="Override include patterns. Defaults to catalog patterns.",
+    help="Override include patterns.",
 )
 @click.option(
     "--exclude",
@@ -344,9 +317,8 @@ def status(ctx: click.Context, name: str | None) -> None:
 )
 @click.option(
     "--reset/--no-reset",
-    default=True,
-    show_default=True,
-    help="Rebuild index from scratch.",
+    default=None,
+    help="Rebuild index from scratch. If omitted, uses project/catalog default.",
 )
 @click.pass_context
 def reindex(
@@ -355,117 +327,111 @@ def reindex(
     path: Path | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
-    reset: bool,
+    reset: bool | None,
 ) -> None:
-    """Re-index an existing index using saved metadata."""
+    """Re-index an existing index using saved metadata or project defaults."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
 
     try:
-        db_url = config.get_database_url()
-        metadata = catalog.get_index_metadata(db_url, name)
-
-        if path is None and metadata is None:
-            raise NotFoundError(
-                f"Index '{name}' has no catalog metadata. Provide --path to proceed."
+        result = service.reindex_codebase(
+            service.ReindexInput(
+                name=config.normalize_index_name(name),
+                path=path,
+                include=include,
+                exclude=exclude,
+                reset=reset,
             )
-
-        if path is not None:
-            source_path = str(path)
-        else:
-            if metadata is None:
-                raise NotFoundError(
-                    f"Index '{name}' has no catalog metadata. Provide --path to proceed."
-                )
-            source_path = metadata.source_path
-        base_included = (
-            list(metadata.include_patterns)
-            if metadata is not None
-            else list(config.DEFAULT_INCLUDED_PATTERNS)
-        )
-        base_excluded = (
-            list(metadata.exclude_patterns)
-            if metadata is not None
-            else list(config.DEFAULT_EXCLUDED_PATTERNS)
-        )
-        included = list(include) if include else base_included
-        excluded = base_excluded + list(exclude)
-
-        stats = indexer.run(
-            path=source_path,
-            name=name,
-            included=included,
-            excluded=excluded,
-            reset=reset,
-            db_url=db_url,
         )
     except Exception as exc:
         _handle_error(exc, debug)
 
     console.print("\n[bold green]Reindex completed.[/bold green]")
-    if stats:
-        for flow_name, flow_stats in stats.items():
+    if result.project_config_file is not None:
+        console.print(f"Project config: {result.project_config_file}")
+    if result.stats:
+        for flow_name, flow_stats in result.stats.items():
             console.print(f"- [bold]{flow_name}[/bold]: {flow_stats}")
 
 
 @cli.command()
-@click.argument("name", callback=_validate_index_name)
+@click.argument("name")
 @click.option("--yes", is_flag=True, help="Delete without confirmation prompt.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be deleted without applying changes.",
+)
 @click.pass_context
-def delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete index tables and metadata."""
+def delete(ctx: click.Context, name: str, yes: bool, dry_run: bool) -> None:
+    """Delete index tables and metadata with safety checks."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
 
-    if not yes:
-        confirmed = click.confirm(
-            f"Delete index '{name}' tables and metadata?", default=False
-        )
-        if not confirmed:
-            console.print("[yellow]Aborted.[/yellow]")
-            return
-
     try:
-        db_url = config.get_database_url()
-        dropped_tables = catalog.delete_index_tables(db_url, name)
-        metadata_deleted = catalog.delete_index_metadata(db_url, name)
-
-        if not dropped_tables and not metadata_deleted:
-            raise NotFoundError(f"Index '{name}' not found.")
+        normalized_name = config.normalize_index_name(name)
+        plan = service.preview_delete(normalized_name)
     except Exception as exc:
         _handle_error(exc, debug)
 
     console.print()
-    console.print(f"[bold green]Deleted index:[/bold green] {name}")
-    if dropped_tables:
-        for table_name in dropped_tables:
-            console.print(f"- {table_name}")
+    console.print(f"[bold]Delete Plan for[/bold] {plan.index_name}")
+    if plan.tables:
+        for table_name in plan.tables:
+            console.print(f"- table: {table_name}")
+    else:
+        console.print("- no matching tables found")
+    console.print(f"- catalog metadata: {'present' if plan.metadata_exists else 'missing'}")
+
+    if dry_run:
+        console.print("\n[yellow]Dry-run only. No changes were made.[/yellow]")
+        return
+
+    if not yes:
+        typed = click.prompt(
+            "Type the index name to confirm deletion",
+            default="",
+            show_default=False,
+        )
+        if typed.strip() != plan.index_name:
+            console.print("[yellow]Aborted. Confirmation name mismatch.[/yellow]")
+            return
+
+    try:
+        service.delete_index(plan.index_name, dry_run=False)
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+    console.print("\n[bold green]Deletion completed.[/bold green]")
 
 
-@cli.command()
+@cli.command(name="doctor")
 @click.pass_context
 def doctor_cmd(ctx: click.Context) -> None:
     """Run local environment diagnostics for codeindex."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
 
     try:
-        db_url, source = config.resolve_database_url()
-        checks = doctor.run_checks(db_url)
+        report = service.run_doctor(Path.cwd())
     except Exception as exc:
         _handle_error(exc, debug)
 
     console.print()
-    console.print(f"[bold]Database URL source:[/bold] {source}")
+    console.print(f"[bold]Database URL source:[/bold] {report.database_url_source}")
+    if report.project_config_file is not None:
+        console.print(f"[bold]Project config:[/bold] {report.project_config_file}")
 
     all_ok = True
-    for check in checks:
+    for check in report.checks:
         status = "[green]OK[/green]" if check.ok else "[red]FAIL[/red]"
         console.print(f"- {status} [bold]{check.name}[/bold]: {check.detail}")
         if not check.ok:
             all_ok = False
 
+    if report.applied_migrations:
+        latest_version = report.applied_migrations[-1][0]
+        console.print(f"\n[bold]Applied migrations:[/bold] {len(report.applied_migrations)}")
+        console.print(f"[bold]Latest migration version:[/bold] {latest_version}")
+
     if all_ok:
         console.print("\n[bold green]Doctor checks passed.[/bold green]")
     else:
         raise click.exceptions.Exit(code=6)
-
-
-cli.add_command(doctor_cmd, name="doctor")

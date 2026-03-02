@@ -38,6 +38,7 @@ default-groups = ["dev"]
 testpaths = ["tests"]
 markers = [
     "integration: tests requiring a running PostgreSQL instance",
+    "e2e: end-to-end tests with real indexing and semantic search",
 ]
 
 [tool.ruff]

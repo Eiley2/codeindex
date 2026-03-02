@@ -9,7 +9,15 @@ from . import catalog, config
 from .errors import ValidationError
 
 
-def _build_flow(name: str, path: str, included: list[str], excluded: list[str]) -> None:
+def _build_flow(
+    name: str,
+    path: str,
+    included: list[str],
+    excluded: list[str],
+    chunk_size: int,
+    chunk_overlap: int,
+    min_chunk_size: int,
+) -> None:
     @cocoindex.flow_def(name=name)
     def _flow(
         flow_builder: cocoindex.FlowBuilder, data_scope: cocoindex.DataScope
@@ -31,9 +39,9 @@ def _build_flow(name: str, path: str, included: list[str], excluded: list[str]) 
             file["chunks"] = file["content"].transform(
                 cocoindex.functions.SplitRecursively(),
                 language=file["language"],
-                chunk_size=config.CHUNK_SIZE,
-                min_chunk_size=config.MIN_CHUNK_SIZE,
-                chunk_overlap=config.CHUNK_OVERLAP,
+                chunk_size=chunk_size,
+                min_chunk_size=min_chunk_size,
+                chunk_overlap=chunk_overlap,
             )
 
             with file["chunks"].row() as chunk:
@@ -85,6 +93,9 @@ def run(
     excluded: list[str],
     reset: bool,
     db_url: str | None = None,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    min_chunk_size: int | None = None,
 ) -> dict:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
@@ -96,12 +107,28 @@ def run(
 
     flow_name = config.normalize_index_name(name)
     effective_db_url = db_url or config.get_database_url()
+    resolved_chunk_size = chunk_size if chunk_size is not None else config.CHUNK_SIZE
+    resolved_chunk_overlap = (
+        chunk_overlap if chunk_overlap is not None else config.CHUNK_OVERLAP
+    )
+    resolved_min_chunk_size = (
+        min_chunk_size if min_chunk_size is not None else config.MIN_CHUNK_SIZE
+    )
+
     cocoindex.init(
         cocoindex.Settings(
             database=cocoindex.DatabaseConnectionSpec(url=effective_db_url)
         )
     )
-    _build_flow(flow_name, abs_path, included, excluded)
+    _build_flow(
+        flow_name,
+        abs_path,
+        included,
+        excluded,
+        chunk_size=resolved_chunk_size,
+        chunk_overlap=resolved_chunk_overlap,
+        min_chunk_size=resolved_min_chunk_size,
+    )
     stats = asyncio.run(_run_async(reset=reset))
     catalog.upsert_index_metadata(
         effective_db_url,
@@ -111,9 +138,9 @@ def run(
             include_patterns=tuple(included),
             exclude_patterns=tuple(excluded),
             embedding_model=config.EMBEDDING_MODEL,
-            chunk_size=config.CHUNK_SIZE,
-            chunk_overlap=config.CHUNK_OVERLAP,
-            min_chunk_size=config.MIN_CHUNK_SIZE,
+            chunk_size=resolved_chunk_size,
+            chunk_overlap=resolved_chunk_overlap,
+            min_chunk_size=resolved_min_chunk_size,
         ),
     )
     return stats

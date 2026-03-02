@@ -7,7 +7,7 @@ import psycopg
 from psycopg import sql
 from psycopg.errors import Error as PsycopgError
 
-from . import config
+from . import config, migrations
 from .errors import DatabaseError, NotFoundError
 
 CATALOG_TABLE = "codeindex_indexes"
@@ -30,30 +30,9 @@ class IndexMetadata:
 
 
 def ensure_catalog_table(db_url: str) -> None:
-    try:
-        with psycopg.connect(db_url) as conn, conn.cursor() as cur:
-            cur.execute(
-                sql.SQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS {} (
-                        index_name TEXT PRIMARY KEY,
-                        source_path TEXT NOT NULL,
-                        include_patterns TEXT[] NOT NULL,
-                        exclude_patterns TEXT[] NOT NULL,
-                        embedding_model TEXT NOT NULL,
-                        chunk_size INTEGER NOT NULL,
-                        chunk_overlap INTEGER NOT NULL,
-                        min_chunk_size INTEGER NOT NULL,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        last_indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    """
-                ).format(_CATALOG_ID)
-            )
-            conn.commit()
-    except PsycopgError as exc:
-        raise DatabaseError(f"Unable to ensure catalog table: {exc}") from exc
+    migrations.apply_migrations(db_url)
+    if not table_exists(db_url, CATALOG_TABLE):
+        raise DatabaseError("Catalog table migration did not create expected table.")
 
 
 def upsert_index_metadata(db_url: str, metadata: IndexMetadata) -> None:
@@ -233,6 +212,21 @@ def index_document_count(db_url: str, index_name: str) -> int:
 
 
 def delete_index_tables(db_url: str, index_name: str) -> list[str]:
+    table_names = list_index_tables(db_url, index_name)
+    try:
+        with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+            for table_name in table_names:
+                drop_query = sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                    sql.Identifier(table_name)
+                )
+                cur.execute(drop_query)
+            conn.commit()
+            return table_names
+    except PsycopgError as exc:
+        raise DatabaseError(f"Unable to delete index tables: {exc}") from exc
+
+
+def list_index_tables(db_url: str, index_name: str) -> list[str]:
     normalized_name = config.normalize_index_name(index_name)
     pattern = f"{normalized_name}__%"
     try:
@@ -250,12 +244,6 @@ def delete_index_tables(db_url: str, index_name: str) -> list[str]:
             table_names = [
                 row[0] for row in cur.fetchall() if row[0] != CATALOG_TABLE
             ]
-            for table_name in table_names:
-                drop_query = sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
-                    sql.Identifier(table_name)
-                )
-                cur.execute(drop_query)
-            conn.commit()
             return table_names
     except PsycopgError as exc:
-        raise DatabaseError(f"Unable to delete index tables: {exc}") from exc
+        raise DatabaseError(f"Unable to list index tables: {exc}") from exc

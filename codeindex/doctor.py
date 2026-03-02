@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import psycopg
 from psycopg.errors import Error as PsycopgError
 
-from . import catalog
+from . import catalog, migrations
 from .errors import DatabaseError
 
 
@@ -21,12 +22,25 @@ def run_checks(db_url: str) -> list[DoctorCheck]:
 
     try:
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+            start = perf_counter()
             cur.execute("SELECT 1")
+            latency_ms = (perf_counter() - start) * 1000.0
             checks.append(
                 DoctorCheck(
                     "database_connection",
                     True,
-                    "PostgreSQL connection is healthy.",
+                    f"PostgreSQL connection is healthy ({latency_ms:.2f}ms).",
+                )
+            )
+
+            cur.execute("SHOW server_version")
+            version_row = cur.fetchone()
+            pg_version = str(version_row[0]) if version_row is not None else "unknown"
+            checks.append(
+                DoctorCheck(
+                    "postgres_version",
+                    True,
+                    f"Server version: {pg_version}",
                 )
             )
 
@@ -50,13 +64,61 @@ def run_checks(db_url: str) -> list[DoctorCheck]:
                     else "Extension 'vector' is missing. Run: CREATE EXTENSION vector;",
                 )
             )
+
+            cur.execute(
+                "SELECT has_schema_privilege(current_user, 'public', 'CREATE')"
+            )
+            privilege_row = cur.fetchone()
+            can_create = bool(privilege_row[0]) if privilege_row is not None else False
+            checks.append(
+                DoctorCheck(
+                    "public_schema_create_privilege",
+                    can_create,
+                    "Current user can create tables in schema 'public'."
+                    if can_create
+                    else "Current user lacks CREATE privilege on schema 'public'.",
+                )
+            )
     except PsycopgError as exc:
         raise DatabaseError(f"Doctor failed while validating database: {exc}") from exc
+
+    try:
+        applied = migrations.apply_migrations(db_url)
+        checks.append(
+            DoctorCheck(
+                "migrations",
+                True,
+                f"Migrations up to {migrations.latest_migration_version()} are ready."
+                if not applied
+                else f"Applied migrations in this run: {applied}",
+            )
+        )
+    except DatabaseError as exc:
+        checks.append(DoctorCheck("migrations", False, str(exc)))
 
     try:
         catalog.ensure_catalog_table(db_url)
         checks.append(DoctorCheck("catalog_table", True, "Catalog table is present."))
     except DatabaseError as exc:
         checks.append(DoctorCheck("catalog_table", False, str(exc)))
+
+    try:
+        import sentence_transformers  # noqa: F401
+
+        checks.append(
+            DoctorCheck(
+                "sentence_transformers_import",
+                True,
+                "sentence-transformers package is importable.",
+            )
+        )
+    except Exception as exc:
+        checks.append(
+            DoctorCheck(
+                "sentence_transformers_import",
+                False,
+                f"sentence-transformers import failed: {exc}",
+            )
+        )
 
     return checks

@@ -21,6 +21,7 @@ uv run codeindex status
 uv run codeindex reindex my_repo
 uv run codeindex doctor
 uv run codeindex delete my_repo --yes
+uv run codeindex delete my_repo --dry-run
 ```
 
 ## Install global CLI (optional)
@@ -58,6 +59,65 @@ Example config file:
 
 ```toml
 database_url = "postgresql://user:password@localhost:5432/cocoindex"
+```
+
+## Per-Project Defaults
+
+`codeindex` auto-discovers `.codeindex.toml` from the current path upward.
+
+Use `.codeindex.toml.example` as a template:
+
+```bash
+cp .codeindex.toml.example /path/to/repo/.codeindex.toml
+```
+
+Supported keys:
+
+- `[index].name`
+- `[index].include_patterns`
+- `[index].exclude_patterns`
+- `[index].reset`
+- `[chunking].chunk_size`
+- `[chunking].chunk_overlap`
+- `[chunking].min_chunk_size`
+
+`index` and `reindex` commands use these defaults when matching CLI flags are not provided.
+
+## Database Migrations
+
+Migrations are applied automatically before operations that require schema setup.
+Migration history is stored in `codeindex_schema_migrations`.
+
+Run diagnostics to confirm migration state:
+
+```bash
+uv run codeindex doctor
+```
+
+## Safe Delete
+
+`delete` now supports planning before destructive actions:
+
+```bash
+uv run codeindex delete my_repo --dry-run
+```
+
+Without `--yes`, the command requires typing the exact index name.
+
+## Tests
+
+Standard suite:
+
+```bash
+uv run pytest -q
+```
+
+E2E (real CocoIndex index + search):
+
+```bash
+export COCOINDEX_TEST_DATABASE_URL='postgresql://postgres:postgres@localhost:5432/cocoindex_test'
+export COCOINDEX_RUN_E2E=1
+uv run pytest -q -m e2e
 ```
 
 ## Exit codes

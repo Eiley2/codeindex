@@ -1,0 +1,12 @@
+[index]
+# Optional: defaults to folder name if omitted
+name = "my_project"
+include_patterns = ["*.py", "*.md"]
+exclude_patterns = [".git/**", "dist/**", "__pycache__/**"]
+# Optional: used when --reset is not provided
+reset = false
+
+[chunking]
+chunk_size = 1000
+chunk_overlap = 300
+min_chunk_size = 300
