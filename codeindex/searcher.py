@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import cocoindex
@@ -20,6 +21,8 @@ class SearchResult:
     filename: str
     text: str
     location: Any | None = None
+    offset_start: int | None = None
+    offset_end: int | None = None
     line_start: int | None = None
     line_end: int | None = None
 
@@ -33,6 +36,64 @@ def _coerce_positive_int(value: Any) -> int | None:
         parsed = int(value.strip())
         return parsed if parsed > 0 else None
     return None
+
+
+def _coerce_non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed >= 0 else None
+    return None
+
+
+def _extract_offset_range(location: Any) -> tuple[int | None, int | None]:
+    if location is None:
+        return None, None
+
+    # psycopg range values (e.g. int8range) expose lower/upper bounds.
+    lower = getattr(location, "lower", None)
+    upper = getattr(location, "upper", None)
+    if lower is not None or upper is not None:
+        return _coerce_non_negative_int(lower), _coerce_non_negative_int(upper)
+
+    if isinstance(location, str):
+        stripped = location.strip()
+        if not stripped:
+            return None, None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            start_match = re.search(
+                r"(?:offset|start|start_offset)\D+(\d+)",
+                stripped,
+                re.I,
+            )
+            end_match = re.search(r"(?:end|end_offset)\D+(\d+)", stripped, re.I)
+            start = int(start_match.group(1)) if start_match else None
+            end = int(end_match.group(1)) if end_match else None
+            return start, end
+        return _extract_offset_range(parsed)
+
+    if isinstance(location, dict):
+        start = (
+            location.get("offset_start")
+            or location.get("start_offset")
+            or location.get("offset")
+        )
+        end = (
+            location.get("offset_end")
+            or location.get("end_offset")
+            or location.get("end")
+        )
+        parsed_start = _coerce_non_negative_int(start)
+        parsed_end = _coerce_non_negative_int(end)
+        if parsed_start is not None:
+            return parsed_start, parsed_end
+
+    return None, None
 
 
 def _extract_line_range(location: Any) -> tuple[int | None, int | None]:
@@ -103,6 +164,60 @@ def _extract_line_range(location: Any) -> tuple[int | None, int | None]:
         return None, None
 
     return None, None
+
+
+def _line_number_for_offset(content: str, offset: int) -> int:
+    if offset <= 0:
+        return 1
+    clamped = min(offset, len(content))
+    return content.count("\n", 0, clamped) + 1
+
+
+def _line_range_from_offsets(
+    content: str,
+    start: int,
+    end: int | None,
+) -> tuple[int, int]:
+    content_len = len(content)
+    safe_start = min(max(start, 0), content_len)
+    safe_end = safe_start if end is None else min(max(end, safe_start), content_len)
+
+    line_start = _line_number_for_offset(content, safe_start)
+    if safe_end == safe_start:
+        return line_start, line_start
+
+    # End offset is exclusive; map to the last covered character.
+    line_end = _line_number_for_offset(content, max(safe_end - 1, 0))
+    return line_start, max(line_end, line_start)
+
+
+def attach_line_numbers(results: list[SearchResult], source_root: Path) -> None:
+    file_cache: dict[Path, str | None] = {}
+    for result in results:
+        if result.line_start is not None:
+            continue
+        if result.offset_start is None:
+            continue
+
+        candidate = Path(result.filename)
+        file_path = candidate if candidate.is_absolute() else source_root / candidate
+        if file_path not in file_cache:
+            try:
+                file_cache[file_path] = file_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                file_cache[file_path] = None
+
+        content = file_cache[file_path]
+        if content is None:
+            continue
+
+        line_start, line_end = _line_range_from_offsets(
+            content,
+            result.offset_start,
+            result.offset_end,
+        )
+        result.line_start = line_start
+        result.line_end = line_end
 
 
 @cocoindex.transform_flow()
@@ -198,6 +313,7 @@ def search(
                 results: list[SearchResult] = []
                 for i, (filename, location, text, score) in enumerate(cur.fetchall()):
                     line_start, line_end = _extract_line_range(location)
+                    offset_start, offset_end = _extract_offset_range(location)
                     results.append(
                         SearchResult(
                             rank=i + 1,
@@ -205,6 +321,8 @@ def search(
                             filename=filename,
                             text=text,
                             location=location,
+                            offset_start=offset_start,
+                            offset_end=offset_end,
                             line_start=line_start,
                             line_end=line_end,
                         )

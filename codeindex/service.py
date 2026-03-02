@@ -264,11 +264,15 @@ def search_index(index_name: str, query: str, top_k: int) -> list[searcher.Searc
     start = perf_counter()
     db_url = config.get_database_url()
     migrations.apply_migrations(db_url)
-    results = searcher.search(index_name, query, top_k=top_k, db_url=db_url)
+    normalized_name = config.normalize_index_name(index_name)
+    results = searcher.search(normalized_name, query, top_k=top_k, db_url=db_url)
+    metadata = catalog.get_index_metadata(db_url, normalized_name)
+    if metadata is not None:
+        searcher.attach_line_numbers(results, Path(metadata.source_path))
     elapsed_ms = (perf_counter() - start) * 1000.0
     logger.info(
         "search.done name=%s top_k=%d results=%d elapsed_ms=%.2f",
-        index_name,
+        normalized_name,
         top_k,
         len(results),
         elapsed_ms,

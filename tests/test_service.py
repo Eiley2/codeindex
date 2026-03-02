@@ -7,6 +7,7 @@ import pytest
 
 from codeindex import catalog, config, project_config, service
 from codeindex.errors import NotFoundError, ValidationError
+from codeindex.searcher import SearchResult
 
 
 def test_reindex_without_metadata_and_path_raises_not_found(
@@ -158,3 +159,61 @@ def test_export_metadata_writes_file(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["version"] == 1
     assert payload["items"][0]["index_name"] == "demo_index"
+
+
+def test_search_uses_catalog_path_to_attach_line_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
+    monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
+
+    captured: dict[str, object] = {}
+
+    def _search(name: str, query: str, top_k: int, db_url: str | None = None) -> list[SearchResult]:
+        captured["name"] = name
+        captured["query"] = query
+        captured["top_k"] = top_k
+        captured["db_url"] = db_url
+        return [
+            SearchResult(
+                rank=1,
+                score=0.8,
+                filename="pkg/mod.py",
+                text="hello",
+                offset_start=5,
+                offset_end=10,
+            )
+        ]
+
+    monkeypatch.setattr(service.searcher, "search", _search)
+    monkeypatch.setattr(
+        service.catalog,
+        "get_index_metadata",
+        lambda _db, _name: catalog.IndexMetadata(
+            index_name="demo_index",
+            source_path="/tmp/demo",
+            include_patterns=("*.py",),
+            exclude_patterns=(".git/**",),
+            embedding_model=config.EMBEDDING_MODEL,
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            min_chunk_size=config.MIN_CHUNK_SIZE,
+        ),
+    )
+
+    attach_calls: list[tuple[list[SearchResult], Path]] = []
+
+    def _attach(results: list[SearchResult], source_root: Path) -> None:
+        attach_calls.append((results, source_root))
+
+    monkeypatch.setattr(service.searcher, "attach_line_numbers", _attach)
+
+    results = service.search_index("Demo-Index", "hello", top_k=3)
+
+    assert len(results) == 1
+    assert captured["name"] == "demo_index"
+    assert captured["query"] == "hello"
+    assert captured["top_k"] == 3
+    assert captured["db_url"] == "postgresql://example"
+    assert len(attach_calls) == 1
+    assert attach_calls[0][1] == Path("/tmp/demo")
