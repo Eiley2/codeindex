@@ -1,31 +1,9 @@
-# Project Instructions: codeindex
-
-Este proyecto usa `codeindex` para indexado y búsqueda semántica local.
-
-## Comandos estándar
+# codeindex
 
 ```bash
 codeindex doctor
 codeindex index .
 codeindex search <index_name> "<query>" -k 10
 codeindex status <index_name>
+codeindex delete <index_name> --dry-run
 ```
-
-## Convenciones
-
-- Antes de búsquedas, verificar estado con `doctor`.
-- Si el índice existe, preferir `reindex` sobre recrear manualmente.
-- Para operaciones destructivas, ejecutar siempre `delete --dry-run` primero.
-
-## Configuración esperada
-
-- DB URL por `COCOINDEX_DATABASE_URL` o `.env`.
-- Configuración por repo en `.codeindex.toml` cuando aplique.
-
-## Diagnóstico
-
-Si falla conexión o schema:
-
-1. Ejecutar `codeindex doctor`
-2. Confirmar extensión `vector`
-3. Reintentar comando
