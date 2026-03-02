@@ -17,7 +17,7 @@ dependencies = [
     "sentence-transformers>=5.2.3",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "mypy>=1.18.2",
     "pytest>=8.4.2",
@@ -29,6 +29,9 @@ codeindex = "codeindex.cli:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["codeindex"]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

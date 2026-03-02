@@ -2,12 +2,36 @@
 
 Local-first CLI for indexing codebases and running semantic search with CocoIndex + PostgreSQL/pgvector.
 
-## Install
+## Setup with uv
 
 ```bash
-pip install .
-# or for global CLI without manual venv activation:
-# pipx install .
+uv sync
+```
+
+This creates/updates `.venv`, installs the project, and includes the `dev` group by default.
+
+## Run with uv
+
+```bash
+uv run codeindex --help
+uv run codeindex index /path/to/repo my_repo
+uv run codeindex search my_repo "authentication middleware" --top-k 10
+uv run codeindex list
+```
+
+## Install global CLI (optional)
+
+```bash
+uv tool install .
+codeindex --help
+```
+
+## Developer commands
+
+```bash
+uv run ruff check .
+uv run mypy codeindex tests
+uv run pytest -q
 ```
 
 ## Configuration
@@ -21,14 +45,6 @@ Example config file:
 
 ```toml
 database_url = "postgresql://user:password@localhost:5432/cocoindex"
-```
-
-## Usage
-
-```bash
-codeindex index /path/to/repo my_repo
-codeindex search my_repo "authentication middleware" --top-k 10
-codeindex list
 ```
 
 Legacy scripts `index_codebase.py` and `search.py` are kept as compatibility wrappers and delegate to `codeindex`.
