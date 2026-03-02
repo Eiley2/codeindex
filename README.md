@@ -24,51 +24,49 @@ Everything runs locally. No API keys, no internet required after the initial mod
 
 ---
 
-## Quickstart
+## Quickstart (Copy/Paste)
 
-### 1. Start PostgreSQL with pgvector
+Assumes you already have `git`, `docker`, and `uv` installed.
 
 ```bash
+# 1) Clone and enter the repo
+git clone https://github.com/Eiley2/codeindex.git
+cd codeindex
+
+# 2) Start PostgreSQL + pgvector (idempotent for local testing)
+docker rm -f codeindex-db >/dev/null 2>&1 || true
 docker run --name codeindex-db \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=cocoindex \
   -p 5432:5432 \
   -d pgvector/pgvector:pg16
-```
 
-Enable the `vector` extension (once):
-
-```bash
+# 3) Enable vector extension
 docker exec -i codeindex-db psql -U postgres -d cocoindex \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
 
-### 2. Configure the database connection
-
-```bash
+# 4) Configure DB URL
 cp .env.example .env
+
+# 5) Install CLI globally from this clone
+uv tool install . --force
+
+# 6) Sanity check
+codeindex doctor
+
+# 7) Index this same repository and query it
+codeindex index "$(pwd)" codeindex_demo
+codeindex search codeindex_demo "how does reindex work" -k 5
+codeindex status codeindex_demo
 ```
 
-`.env.example`:
-
-```dotenv
-COCOINDEX_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cocoindex
-```
-
-### 3. Install the CLI
+Run from any directory after install:
 
 ```bash
-uv tool install .
-codeindex --help
-```
-
-### 4. Index and search
-
-```bash
-codeindex index /path/to/repo my_project
-codeindex search my_project "authentication middleware"
-codeindex status my_project
+cd /tmp
+codeindex list
+codeindex search codeindex_demo "catalog metadata"
 ```
 
 ---
