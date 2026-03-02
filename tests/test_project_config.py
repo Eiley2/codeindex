@@ -17,6 +17,8 @@ def test_discover_project_config(tmp_path: Path) -> None:
         """
 [index]
 name = "My App"
+embedding_provider = "openrouter"
+embedding_model = "BAAI/bge-base-en-v1.5"
 include_patterns = ["*.py", "*.md"]
 exclude_patterns = [".git/**", "dist/**"]
 reset = true
@@ -33,6 +35,8 @@ min_chunk_size = 200
 
     assert cfg.source_file == project / ".codeindex.toml"
     assert cfg.index_name == "my_app"
+    assert cfg.embedding_provider == "openrouter"
+    assert cfg.embedding_model == "BAAI/bge-base-en-v1.5"
     assert cfg.include_patterns == ("*.py", "*.md")
     assert cfg.exclude_patterns == (".git/**", "dist/**")
     assert cfg.default_reset is True
@@ -54,6 +58,30 @@ def test_invalid_types_raise(tmp_path: Path) -> None:
     project.mkdir()
     (project / ".codeindex.toml").write_text(
         "[index]\ninclude_patterns = 'not-a-list'\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError):
+        project_config.discover(project)
+
+
+def test_invalid_embedding_model_type_raises(tmp_path: Path) -> None:
+    project = tmp_path / "app"
+    project.mkdir()
+    (project / ".codeindex.toml").write_text(
+        "[index]\nembedding_model = 123\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError):
+        project_config.discover(project)
+
+
+def test_invalid_embedding_provider_type_raises(tmp_path: Path) -> None:
+    project = tmp_path / "app"
+    project.mkdir()
+    (project / ".codeindex.toml").write_text(
+        "[index]\nembedding_provider = 123\n",
         encoding="utf-8",
     )
 

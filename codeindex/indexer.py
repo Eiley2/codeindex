@@ -16,6 +16,8 @@ def _build_flow(
     path: str,
     included: list[str],
     excluded: list[str],
+    embedding_provider: str,
+    embedding_model: str,
     chunk_size: int,
     chunk_overlap: int,
     min_chunk_size: int,
@@ -47,11 +49,19 @@ def _build_flow(
             )
 
             with file["chunks"].row() as chunk:
-                chunk["embedding"] = chunk["text"].transform(
-                    cocoindex.functions.SentenceTransformerEmbed(
-                        model=config.EMBEDDING_MODEL
+                if embedding_provider == "openrouter":
+                    chunk["embedding"] = chunk["text"].transform(
+                        cocoindex.functions.EmbedText(
+                            api_type=cocoindex.llm.LlmApiType.OPEN_ROUTER,
+                            model=embedding_model,
+                        )
                     )
-                )
+                else:
+                    chunk["embedding"] = chunk["text"].transform(
+                        cocoindex.functions.SentenceTransformerEmbed(
+                            model=embedding_model
+                        )
+                    )
                 embeddings.collect(
                     filename=file["filename"],
                     location=chunk["location"],
@@ -152,6 +162,8 @@ def run(
     excluded: list[str],
     reset: bool,
     db_url: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
     min_chunk_size: int | None = None,
@@ -168,6 +180,16 @@ def run(
 
     flow_name = config.normalize_index_name(name)
     effective_db_url = db_url or config.get_database_url()
+    resolved_embedding_provider = config.validate_embedding_provider(
+        embedding_provider or config.get_default_embedding_provider()
+    )
+    if embedding_model is None:
+        resolved_embedding_model, _ = config.resolve_embedding_model(
+            provider=resolved_embedding_provider
+        )
+    else:
+        resolved_embedding_model = config.validate_embedding_model_name(embedding_model)
+    config.require_embedding_provider_credentials(resolved_embedding_provider)
     resolved_chunk_size = chunk_size if chunk_size is not None else config.CHUNK_SIZE
     resolved_chunk_overlap = (
         chunk_overlap if chunk_overlap is not None else config.CHUNK_OVERLAP
@@ -193,6 +215,8 @@ def run(
         abs_path,
         included,
         excluded,
+        embedding_provider=resolved_embedding_provider,
+        embedding_model=resolved_embedding_model,
         chunk_size=resolved_chunk_size,
         chunk_overlap=resolved_chunk_overlap,
         min_chunk_size=resolved_min_chunk_size,
@@ -205,7 +229,8 @@ def run(
             source_path=abs_path,
             include_patterns=tuple(included),
             exclude_patterns=tuple(excluded),
-            embedding_model=config.EMBEDDING_MODEL,
+            embedding_provider=resolved_embedding_provider,
+            embedding_model=resolved_embedding_model,
             chunk_size=resolved_chunk_size,
             chunk_overlap=resolved_chunk_overlap,
             min_chunk_size=resolved_min_chunk_size,

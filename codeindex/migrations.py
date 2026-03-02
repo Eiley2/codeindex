@@ -42,6 +42,16 @@ MIGRATIONS: tuple[Migration, ...] = (
             """.strip(),
         ),
     ),
+    Migration(
+        version=2,
+        name="add_embedding_provider_to_catalog",
+        statements=(
+            f"""
+            ALTER TABLE {CATALOG_TABLE}
+            ADD COLUMN IF NOT EXISTS embedding_provider TEXT NOT NULL DEFAULT 'local'
+            """.strip(),
+        ),
+    ),
 )
 
 

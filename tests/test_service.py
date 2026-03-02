@@ -145,6 +145,7 @@ def test_export_metadata_writes_file(
                 source_path="/tmp/demo",
                 include_patterns=("*.py",),
                 exclude_patterns=(".git/**",),
+                embedding_provider="local",
                 embedding_model="sentence-transformers/all-MiniLM-L6-v2",
                 chunk_size=1000,
                 chunk_overlap=300,
@@ -169,11 +170,20 @@ def test_search_uses_catalog_path_to_attach_line_numbers(
 
     captured: dict[str, object] = {}
 
-    def _search(name: str, query: str, top_k: int, db_url: str | None = None) -> list[SearchResult]:
+    def _search(
+        name: str,
+        query: str,
+        top_k: int,
+        db_url: str | None = None,
+        embedding_provider: str | None = None,
+        embedding_model: str | None = None,
+    ) -> list[SearchResult]:
         captured["name"] = name
         captured["query"] = query
         captured["top_k"] = top_k
         captured["db_url"] = db_url
+        captured["embedding_provider"] = embedding_provider
+        captured["embedding_model"] = embedding_model
         return [
             SearchResult(
                 rank=1,
@@ -194,7 +204,8 @@ def test_search_uses_catalog_path_to_attach_line_numbers(
             source_path="/tmp/demo",
             include_patterns=("*.py",),
             exclude_patterns=(".git/**",),
-            embedding_model=config.EMBEDDING_MODEL,
+            embedding_provider="local",
+            embedding_model=config.DEFAULT_EMBEDDING_MODEL,
             chunk_size=config.CHUNK_SIZE,
             chunk_overlap=config.CHUNK_OVERLAP,
             min_chunk_size=config.MIN_CHUNK_SIZE,
@@ -215,5 +226,132 @@ def test_search_uses_catalog_path_to_attach_line_numbers(
     assert captured["query"] == "hello"
     assert captured["top_k"] == 3
     assert captured["db_url"] == "postgresql://example"
+    assert captured["embedding_provider"] == "local"
+    assert captured["embedding_model"] == config.DEFAULT_EMBEDDING_MODEL
     assert len(attach_calls) == 1
     assert attach_calls[0][1] == Path("/tmp/demo")
+
+
+def test_index_prefers_cli_embedding_model_over_project_and_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "repo"
+    source.mkdir()
+
+    monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
+    monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
+    monkeypatch.setattr(
+        service.project_config,
+        "discover",
+        lambda _path: project_config.ProjectConfig(
+            embedding_model="sentence-transformers/project-model"
+        ),
+    )
+    monkeypatch.setattr(
+        service.config,
+        "get_default_embedding_model",
+        lambda: "sentence-transformers/default-model",
+    )
+
+    captured: dict[str, object] = {}
+
+    def _run(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"flow": {"rows": 1}}
+
+    monkeypatch.setattr(service.indexer, "run", _run)
+
+    service.index_codebase(
+        service.IndexInput(path=source, embedding_model="sentence-transformers/cli-model")
+    )
+
+    assert captured["embedding_model"] == "sentence-transformers/cli-model"
+
+
+def test_reindex_uses_metadata_embedding_model_when_no_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "repo"
+    source.mkdir()
+
+    monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
+    monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
+    monkeypatch.setattr(
+        service.catalog,
+        "get_index_metadata",
+        lambda _db, _name: catalog.IndexMetadata(
+            index_name="demo_index",
+            source_path=str(source),
+            include_patterns=("*.py",),
+            exclude_patterns=(".git/**",),
+            embedding_provider="local",
+            embedding_model="sentence-transformers/metadata-model",
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            min_chunk_size=config.MIN_CHUNK_SIZE,
+        ),
+    )
+    monkeypatch.setattr(
+        service.project_config,
+        "discover",
+        lambda _path: project_config.ProjectConfig(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _run(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"flow": {"rows": 1}}
+
+    monkeypatch.setattr(service.indexer, "run", _run)
+
+    service.reindex_codebase(service.ReindexInput(name="demo_index"))
+
+    assert captured["embedding_provider"] == "local"
+    assert captured["embedding_model"] == "sentence-transformers/metadata-model"
+
+
+def test_search_uses_default_embedding_model_when_metadata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service.config, "get_database_url", lambda: "postgresql://example")
+    monkeypatch.setattr(service.migrations, "apply_migrations", lambda _db: [])
+    monkeypatch.setattr(service.catalog, "get_index_metadata", lambda _db, _name: None)
+    monkeypatch.setattr(
+        service.config,
+        "get_default_embedding_provider",
+        lambda: "local",
+    )
+    monkeypatch.setattr(
+        service.config,
+        "resolve_embedding_model",
+        lambda explicit_model=None, config_path=None, provider=None: (
+            "sentence-transformers/default-model",
+            "default:local",
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _search(
+        name: str,
+        query: str,
+        top_k: int,
+        db_url: str | None = None,
+        embedding_provider: str | None = None,
+        embedding_model: str | None = None,
+    ) -> list[SearchResult]:
+        captured["name"] = name
+        captured["embedding_provider"] = embedding_provider
+        captured["embedding_model"] = embedding_model
+        return []
+
+    monkeypatch.setattr(service.searcher, "search", _search)
+
+    service.search_index("demo-index", "hello", top_k=3)
+
+    assert captured["name"] == "demo_index"
+    assert captured["embedding_provider"] == "local"
+    assert captured["embedding_model"] == "sentence-transformers/default-model"

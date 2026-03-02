@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 class IndexInput:
     path: Path
     name: str | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     reset: bool = False
@@ -29,6 +31,8 @@ class IndexInput:
 class ReindexInput:
     name: str
     path: Path | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     reset: bool | None = None
@@ -103,6 +107,17 @@ def index_codebase(payload: IndexInput) -> IndexOperationResult:
     resolved_name = config.normalize_index_name(
         payload.name or pcfg.index_name or payload.path.name
     )
+    embedding_provider = config.validate_embedding_provider(
+        payload.embedding_provider
+        or pcfg.embedding_provider
+        or config.get_default_embedding_provider()
+    )
+    global_model, _ = config.resolve_embedding_model(provider=embedding_provider)
+    embedding_model = config.validate_embedding_model_name(
+        payload.embedding_model
+        or pcfg.embedding_model
+        or global_model
+    )
 
     included = list(payload.include) if payload.include else list(
         pcfg.include_patterns or config.DEFAULT_INCLUDED_PATTERNS
@@ -124,11 +139,13 @@ def index_codebase(payload: IndexInput) -> IndexOperationResult:
     )
 
     logger.info(
-        "index.start name=%s path=%s include=%d exclude=%d",
+        "index.start name=%s path=%s include=%d exclude=%d provider=%s model=%s",
         resolved_name,
         payload.path,
         len(included),
         len(excluded),
+        embedding_provider,
+        embedding_model,
     )
 
     stats = indexer.run(
@@ -138,6 +155,8 @@ def index_codebase(payload: IndexInput) -> IndexOperationResult:
         excluded=excluded,
         reset=reset,
         db_url=db_url,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         min_chunk_size=min_chunk_size,
@@ -193,6 +212,19 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
     else:
         base_excluded = list(config.DEFAULT_EXCLUDED_PATTERNS)
     excluded = base_excluded + list(payload.exclude)
+    embedding_provider = config.validate_embedding_provider(
+        payload.embedding_provider
+        or pcfg.embedding_provider
+        or (metadata.embedding_provider if metadata is not None else None)
+        or config.get_default_embedding_provider()
+    )
+    global_model, _ = config.resolve_embedding_model(provider=embedding_provider)
+    embedding_model = config.validate_embedding_model_name(
+        payload.embedding_model
+        or pcfg.embedding_model
+        or (metadata.embedding_model if metadata is not None else None)
+        or global_model
+    )
 
     if payload.reset is not None:
         reset = payload.reset
@@ -230,11 +262,13 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
     )
 
     logger.info(
-        "reindex.start name=%s path=%s include=%d exclude=%d",
+        "reindex.start name=%s path=%s include=%d exclude=%d provider=%s model=%s",
         normalized_name,
         source_path,
         len(included),
         len(excluded),
+        embedding_provider,
+        embedding_model,
     )
 
     stats = indexer.run(
@@ -244,6 +278,8 @@ def reindex_codebase(payload: ReindexInput) -> IndexOperationResult:
         excluded=excluded,
         reset=reset,
         db_url=db_url,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         min_chunk_size=min_chunk_size,
@@ -265,8 +301,25 @@ def search_index(index_name: str, query: str, top_k: int) -> list[searcher.Searc
     db_url = config.get_database_url()
     migrations.apply_migrations(db_url)
     normalized_name = config.normalize_index_name(index_name)
-    results = searcher.search(normalized_name, query, top_k=top_k, db_url=db_url)
     metadata = catalog.get_index_metadata(db_url, normalized_name)
+    embedding_provider = (
+        metadata.embedding_provider
+        if metadata is not None
+        else config.get_default_embedding_provider()
+    )
+    embedding_model = (
+        metadata.embedding_model
+        if metadata is not None
+        else config.resolve_embedding_model(provider=embedding_provider)[0]
+    )
+    results = searcher.search(
+        normalized_name,
+        query,
+        top_k=top_k,
+        db_url=db_url,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+    )
     if metadata is not None:
         searcher.attach_line_numbers(results, Path(metadata.source_path))
     elapsed_ms = (perf_counter() - start) * 1000.0
@@ -373,6 +426,7 @@ def export_metadata(output_path: Path, index_name: str | None = None) -> int:
                 "source_path": item.source_path,
                 "include_patterns": list(item.include_patterns),
                 "exclude_patterns": list(item.exclude_patterns),
+                "embedding_provider": item.embedding_provider,
                 "embedding_model": item.embedding_model,
                 "chunk_size": item.chunk_size,
                 "chunk_overlap": item.chunk_overlap,
@@ -439,6 +493,9 @@ def import_metadata(input_path: Path, dry_run: bool = False) -> int:
                 source_path=str(item["source_path"]),
                 include_patterns=tuple(include_patterns),
                 exclude_patterns=tuple(exclude_patterns),
+                embedding_provider=config.validate_embedding_provider(
+                    str(item.get("embedding_provider", config.DEFAULT_EMBEDDING_PROVIDER))
+                ),
                 embedding_model=str(item["embedding_model"]),
                 chunk_size=int(item["chunk_size"]),
                 chunk_overlap=int(item["chunk_overlap"]),

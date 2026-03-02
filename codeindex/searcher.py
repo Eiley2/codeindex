@@ -220,13 +220,27 @@ def attach_line_numbers(results: list[SearchResult], source_root: Path) -> None:
         result.line_end = line_end
 
 
-@cocoindex.transform_flow()
-def _text_to_embedding(
-    text: cocoindex.DataSlice[str],
-) -> cocoindex.DataSlice[cocoindex.Vector[cocoindex.Float32]]:
-    return text.transform(
-        cocoindex.functions.SentenceTransformerEmbed(model=config.EMBEDDING_MODEL)
-    )
+def _embed_query(
+    text: str,
+    embedding_provider: str,
+    embedding_model: str,
+) -> Any:
+    @cocoindex.transform_flow()
+    def _text_to_embedding(
+        data: cocoindex.DataSlice[str],
+    ) -> cocoindex.DataSlice[cocoindex.Vector[cocoindex.Float32]]:
+        if embedding_provider == "openrouter":
+            return data.transform(
+                cocoindex.functions.EmbedText(
+                    api_type=cocoindex.llm.LlmApiType.OPEN_ROUTER,
+                    model=embedding_model,
+                )
+            )
+        return data.transform(
+            cocoindex.functions.SentenceTransformerEmbed(model=embedding_model)
+        )
+
+    return _text_to_embedding.eval(text)
 
 
 def list_indexes(db_url: str) -> "list[str]":
@@ -283,6 +297,8 @@ def search(
     query: str,
     top_k: int = config.DEFAULT_TOP_K,
     db_url: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> list[SearchResult]:
     if top_k < 1:
         raise ValidationError("--top-k must be >= 1.")
@@ -290,12 +306,26 @@ def search(
         raise ValidationError("Query cannot be empty.")
 
     effective_db_url = db_url or config.get_database_url()
+    resolved_embedding_provider = config.validate_embedding_provider(
+        embedding_provider or config.get_default_embedding_provider()
+    )
+    if embedding_model is None:
+        resolved_embedding_model, _ = config.resolve_embedding_model(
+            provider=resolved_embedding_provider
+        )
+    else:
+        resolved_embedding_model = config.validate_embedding_model_name(embedding_model)
+    config.require_embedding_provider_credentials(resolved_embedding_provider)
     table = _resolve_table(effective_db_url, index_name)
 
     cocoindex.init(
         cocoindex.Settings(database=cocoindex.DatabaseConnectionSpec(url=effective_db_url))
     )
-    query_vector = _text_to_embedding.eval(query)
+    query_vector = _embed_query(
+        query,
+        resolved_embedding_provider,
+        resolved_embedding_model,
+    )
 
     try:
         with psycopg.connect(effective_db_url) as conn:

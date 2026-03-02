@@ -1,6 +1,10 @@
 [index]
 # Optional: defaults to folder name if omitted
 name = "my_project"
+# Optional: per-project embedding model override
+# (fallback order: CLI flag > this value > global config/env > default)
+embedding_provider = "local"  # "local" or "openrouter"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 include_patterns = ["*.py", "*.md"]
 # Important: this replaces default excludes entirely.
 # Keep node_modules/.venv/caches excluded to avoid slow indexing.

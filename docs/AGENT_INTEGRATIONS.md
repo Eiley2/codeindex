@@ -6,7 +6,7 @@
 
 ## Codex
 
-The Codex skill teaches an agent how to discover, index, query, and maintain `codeindex` indexes. Install it once and any Codex session gains access to semantic codebase search.
+The Codex skill gives agents a minimal, reliable workflow to discover projects, index, query, and maintain local `codeindex` indexes.
 
 ### Installation
 
@@ -29,7 +29,8 @@ The skill provides the agent with the following workflow:
 
 | Step | Command | Purpose |
 |------|---------|---------|
-| Discover | `codeindex list` | Check which indexes exist and their metadata |
+| Discover | `codeindex list` | See projects/indexes (name, path, chunks) |
+| Setup | `codeindex setup --database-url "<postgres-url>" --preset fast` | Create global config when missing |
 | Index | `codeindex index <path> [name]` | Create a new index for a repository |
 | Search | `codeindex search <name> "<query>" -k 10` | Retrieve semantically relevant code chunks |
 | Update | `codeindex reindex <name>` | Refresh the index after code changes |
@@ -38,6 +39,8 @@ The skill provides the agent with the following workflow:
 ### Notes for agents
 
 - Built-in exclude patterns drop `node_modules/**`, `.venv/**`, `.git/**`, `dist/**`, caches, and build artifacts automatically.
+- Use `--embedding-provider <local|openrouter>` and `--embedding-model <model_id>` on `index` or `reindex` to override embeddings for a run.
+- OpenRouter requires `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
 - If a repository defines `[index].exclude_patterns` in `.codeindex.toml`, the built-in defaults are **replaced**. In that case, ensure `node_modules/**` and `.venv/**` are retained explicitly to avoid slow or oversized indexing runs.
 
 ---
@@ -67,8 +70,9 @@ Or merge its contents into an existing `CLAUDE.md`.
 The template instructs Claude to follow a standard `codeindex` workflow before answering questions about the codebase:
 
 1. Check for existing indexes with `codeindex list`.
-2. Create an index with `codeindex index . [name]` if none exists.
-3. Query with `codeindex search <name> "<query>" -k 10` to retrieve relevant context.
-4. Refresh with `codeindex reindex <name>` when the codebase has changed.
+2. Run `codeindex setup --database-url "<postgres-url>" --preset fast` if config is missing.
+3. Create an index with `codeindex index . [name]` if none exists.
+4. Query with `codeindex search <name> "<query>" -k 10` to retrieve relevant context.
+5. Refresh with `codeindex reindex <name>` when the codebase has changed.
 
 This lets Claude retrieve semantically relevant code instead of relying solely on file reads or keyword search.

@@ -20,6 +20,7 @@ class IndexMetadata:
     source_path: str
     include_patterns: tuple[str, ...]
     exclude_patterns: tuple[str, ...]
+    embedding_provider: str
     embedding_model: str
     chunk_size: int
     chunk_overlap: int
@@ -47,16 +48,18 @@ def upsert_index_metadata(db_url: str, metadata: IndexMetadata) -> None:
                         source_path,
                         include_patterns,
                         exclude_patterns,
+                        embedding_provider,
                         embedding_model,
                         chunk_size,
                         chunk_overlap,
                         min_chunk_size
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (index_name)
                     DO UPDATE SET
                         source_path = EXCLUDED.source_path,
                         include_patterns = EXCLUDED.include_patterns,
                         exclude_patterns = EXCLUDED.exclude_patterns,
+                        embedding_provider = EXCLUDED.embedding_provider,
                         embedding_model = EXCLUDED.embedding_model,
                         chunk_size = EXCLUDED.chunk_size,
                         chunk_overlap = EXCLUDED.chunk_overlap,
@@ -70,6 +73,7 @@ def upsert_index_metadata(db_url: str, metadata: IndexMetadata) -> None:
                     metadata.source_path,
                     list(metadata.include_patterns),
                     list(metadata.exclude_patterns),
+                    metadata.embedding_provider,
                     metadata.embedding_model,
                     metadata.chunk_size,
                     metadata.chunk_overlap,
@@ -87,13 +91,14 @@ def _row_to_metadata(row: tuple) -> IndexMetadata:
         source_path=row[1],
         include_patterns=tuple(row[2]),
         exclude_patterns=tuple(row[3]),
-        embedding_model=row[4],
-        chunk_size=row[5],
-        chunk_overlap=row[6],
-        min_chunk_size=row[7],
-        created_at=row[8],
-        updated_at=row[9],
-        last_indexed_at=row[10],
+        embedding_provider=row[4],
+        embedding_model=row[5],
+        chunk_size=row[6],
+        chunk_overlap=row[7],
+        min_chunk_size=row[8],
+        created_at=row[9],
+        updated_at=row[10],
+        last_indexed_at=row[11],
     )
 
 
@@ -108,6 +113,7 @@ def list_index_metadata(db_url: str) -> list[IndexMetadata]:
                         source_path,
                         include_patterns,
                         exclude_patterns,
+                        embedding_provider,
                         embedding_model,
                         chunk_size,
                         chunk_overlap,
@@ -137,6 +143,7 @@ def get_index_metadata(db_url: str, index_name: str) -> IndexMetadata | None:
                         source_path,
                         include_patterns,
                         exclude_patterns,
+                        embedding_provider,
                         embedding_model,
                         chunk_size,
                         chunk_overlap,

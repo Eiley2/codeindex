@@ -22,6 +22,7 @@ description: >
 
 ```bash
 codeindex list
+codeindex setup --database-url "<postgres-url>" --preset fast
 codeindex index <repo_path> [index_name]
 codeindex search <index_name> "<query>" -k 10
 codeindex reindex <index_name>
@@ -30,7 +31,11 @@ codeindex delete <index_name> --dry-run
 
 ## Notes
 
-- Run `codeindex list` first to discover available indexes and metadata.
+- `codeindex list` shows available projects/indexes (name, path, chunks).
+- Run `codeindex setup` once if global config is missing.
+- Use `--embedding-provider <local|openrouter>` and
+  `--embedding-model <model_id>` on `index`/`reindex` to override embeddings.
+- OpenRouter requires `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
 - If a repository defines `exclude_patterns` in `.codeindex.toml`,
   built-in exclude defaults are replaced.
   Retain `node_modules/**` and `.venv/**` explicitly in custom lists
@@ -50,29 +55,37 @@ or which files handle a given concern.
 codeindex list
 ```
 
-2. Create an index if none exists:
+2. Setup global config if missing:
+```bash
+codeindex setup --database-url "<postgres-url>" --preset fast
+```
+
+3. Create an index if none exists:
 ```bash
 codeindex index . [index_name]
 ```
 
-3. Query for relevant context:
+4. Query for relevant context:
 ```bash
 codeindex search <index_name> "<query>" -k 10
 ```
 
-4. Refresh after code changes:
+5. Refresh after code changes:
 ```bash
 codeindex reindex <index_name>
 ```
 
-5. Preview before deleting:
+6. Preview before deleting:
 ```bash
 codeindex delete <index_name> --dry-run
 ```
 
 ## Notes
 
-- `codeindex list` shows available indexes and metadata (index name and source path).
+- `codeindex list` shows available indexes and metadata (index name, source path, chunk count).
+- Use `--embedding-provider <local|openrouter>` and
+  `--embedding-model <model_id>` on `index` or `reindex` when needed.
+- OpenRouter requires `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
 - If this repository defines `exclude_patterns` in `.codeindex.toml`,
   built-in exclude defaults are replaced.
   Ensure `node_modules/**` and `.venv/**` are present in the custom list

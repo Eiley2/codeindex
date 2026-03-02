@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import NoReturn
 
@@ -16,6 +19,8 @@ from . import agent_skills, config, service, updater
 from .errors import ConfigurationError, DatabaseError, NotFoundError, ValidationError
 
 console = Console()
+_ZSH_COMPLETION_BLOCK_START = "# >>> codeindex zsh completion >>>"
+_ZSH_COMPLETION_BLOCK_END = "# <<< codeindex zsh completion <<<"
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -50,6 +55,56 @@ def _normalize_optional_name(name: str | None) -> str | None:
     return config.normalize_index_name(name)
 
 
+def _read_database_url_from_config(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("database_url")
+    if raw is None:
+        nested = data.get("codeindex", {})
+        if isinstance(nested, dict):
+            raw = nested.get("database_url")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _zsh_completion_block() -> str:
+    return "\n".join(
+        [
+            _ZSH_COMPLETION_BLOCK_START,
+            'eval "$(_CODEINDEX_COMPLETE=zsh_source codeindex)"',
+            _ZSH_COMPLETION_BLOCK_END,
+        ]
+    )
+
+
+def _upsert_managed_block(path: Path, block: str, start_marker: str, end_marker: str) -> str:
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    pattern = re.compile(
+        re.escape(start_marker) + r".*?" + re.escape(end_marker),
+        re.DOTALL,
+    )
+    if pattern.search(existing):
+        updated = pattern.sub(block, existing, count=1)
+        if updated == existing:
+            return "unchanged"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(updated if updated.endswith("\n") else updated + "\n", encoding="utf-8")
+        return "updated"
+
+    separator = "" if not existing else "\n" if existing.endswith("\n") else "\n\n"
+    updated = f"{existing}{separator}{block}\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(updated, encoding="utf-8")
+    return "created" if not existing else "updated"
+
+
 @click.group()
 @click.option("--debug", is_flag=True, help="Show Python traceback on errors.")
 @click.option("--verbose", is_flag=True, help="Enable verbose logs.")
@@ -63,7 +118,7 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
 
     if ctx.invoked_subcommand is None:
         return
-    if ctx.invoked_subcommand in {"update", "check-update"}:
+    if ctx.invoked_subcommand in {"update", "check-update", "completion"}:
         return
     notice = updater.update_notification()
     if notice:
@@ -115,6 +170,20 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
     default=None,
     help="Fail if any matched file exceeds this size in bytes.",
 )
+@click.option(
+    "--embedding-provider",
+    type=click.Choice(list(config.EMBEDDING_PROVIDERS)),
+    default=None,
+    help="Embedding provider to use: local or openrouter.",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help=(
+        "Sentence-transformers model id for embeddings "
+        "(for example: sentence-transformers/all-MiniLM-L6-v2)."
+    ),
+)
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -125,6 +194,8 @@ def index(
     reset: bool,
     max_files: int | None,
     max_file_bytes: int | None,
+    embedding_provider: str | None,
+    embedding_model: str | None,
 ) -> None:
     """Index a codebase at PATH under the optional NAME."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
@@ -139,6 +210,8 @@ def index(
                 reset=reset,
                 max_files=max_files,
                 max_file_bytes=max_file_bytes,
+                embedding_provider=embedding_provider,
+                embedding_model=embedding_model,
             )
         )
     except Exception as exc:
@@ -335,6 +408,20 @@ def list_indexes(ctx: click.Context) -> None:
     default=None,
     help="Fail if any matched file exceeds this size in bytes.",
 )
+@click.option(
+    "--embedding-provider",
+    type=click.Choice(list(config.EMBEDDING_PROVIDERS)),
+    default=None,
+    help="Embedding provider to use: local or openrouter.",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help=(
+        "Sentence-transformers model id for embeddings "
+        "(for example: sentence-transformers/all-MiniLM-L6-v2)."
+    ),
+)
 @click.pass_context
 def reindex(
     ctx: click.Context,
@@ -345,6 +432,8 @@ def reindex(
     reset: bool | None,
     max_files: int | None,
     max_file_bytes: int | None,
+    embedding_provider: str | None,
+    embedding_model: str | None,
 ) -> None:
     """Re-index an existing index using saved metadata or project defaults."""
     debug = bool(ctx.obj.get("debug")) if ctx.obj else False
@@ -359,6 +448,8 @@ def reindex(
                 reset=reset,
                 max_files=max_files,
                 max_file_bytes=max_file_bytes,
+                embedding_provider=embedding_provider,
+                embedding_model=embedding_model,
             )
         )
     except Exception as exc:
@@ -584,6 +675,178 @@ def update(ctx: click.Context, repo: str, path: Path | None) -> None:
 
     console.print(f"[bold green]Update completed.[/bold green] Source: {source}")
     console.print("Run [bold]hash -r[/bold] if your shell caches command paths.")
+
+
+@cli.command(name="embedding-models")
+def embedding_models() -> None:
+    """List embedding model presets derived from benchmark recommendations."""
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
+    table.add_column("Preset", style="bold white")
+    table.add_column("Provider", style="white")
+    table.add_column("Model", style="cyan")
+    table.add_column("Use Case", style="white")
+    table.add_column("Summary", style="dim")
+    for preset in config.EMBEDDING_MODEL_PRESETS:
+        table.add_row(
+            preset.key,
+            preset.provider,
+            preset.model_id,
+            preset.label,
+            preset.summary,
+        )
+    console.print()
+    console.print(table)
+    console.print(f"[dim]Source:[/dim] {config.EMBEDDING_BENCHMARK_SOURCE}")
+
+
+@cli.command(name="setup")
+@click.option(
+    "--config-path",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Target config TOML path (defaults to ~/.config/codeindex/config.toml).",
+)
+@click.option(
+    "--database-url",
+    default=None,
+    help="Database URL to store in config.toml.",
+)
+@click.option(
+    "--preset",
+    type=click.Choice([preset.key for preset in config.EMBEDDING_MODEL_PRESETS]),
+    default="fast",
+    show_default=True,
+    help="Embedding preset based on benchmark recommendations.",
+)
+@click.option(
+    "--embedding-provider",
+    type=click.Choice(list(config.EMBEDDING_PROVIDERS)),
+    default=None,
+    help="Embedding provider (local or openrouter).",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help="Custom embedding model id. Overrides --preset if provided.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite an existing config file.",
+)
+@click.pass_context
+def setup_cmd(
+    ctx: click.Context,
+    config_path: Path | None,
+    database_url: str | None,
+    preset: str,
+    embedding_provider: str | None,
+    embedding_model: str | None,
+    force: bool,
+) -> None:
+    """Create initial global config with database URL and embedding model."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        target = config_path or config.default_config_path()
+        existing_db = _read_database_url_from_config(target)
+        if target.exists() and not force:
+            raise ValidationError(
+                f"Config file '{target}' already exists. Use --force to overwrite."
+            )
+
+        preset_value = config.get_embedding_model_preset(preset)
+        chosen_provider = (
+            config.validate_embedding_provider(embedding_provider)
+            if embedding_provider is not None
+            else preset_value.provider
+        )
+        chosen_model = (
+            config.validate_embedding_model_name(embedding_model)
+            if embedding_model is not None
+            else (
+                preset_value.model_id
+                if embedding_provider is None
+                else config.default_embedding_model_for_provider(chosen_provider)
+            )
+        )
+        config.require_embedding_provider_credentials(chosen_provider)
+        chosen_db = database_url.strip() if isinstance(database_url, str) else None
+        if not chosen_db:
+            chosen_db = existing_db
+
+        lines = [
+            "# Generated by `codeindex setup`",
+            f"# Benchmark source: {config.EMBEDDING_BENCHMARK_SOURCE}",
+        ]
+        if chosen_db:
+            lines.append(f"database_url = {json.dumps(chosen_db)}")
+        lines.append(f"embedding_provider = {json.dumps(chosen_provider)}")
+        lines.append(f"embedding_model = {json.dumps(chosen_model)}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        console.print(f"[bold green]Config written:[/bold green] {target}")
+        if chosen_db:
+            console.print("[bold]database_url[/bold] configured")
+        else:
+            console.print(
+                "[yellow]database_url not set in file.[/yellow] "
+                "Set COCOINDEX_DATABASE_URL env var or rerun setup with --database-url."
+            )
+        console.print(f"[bold]embedding_provider:[/bold] {chosen_provider}")
+        console.print(f"[bold]embedding_model:[/bold] {chosen_model}")
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+
+@cli.group(name="completion")
+def completion_group() -> None:
+    """Shell completion helpers."""
+
+
+@completion_group.command(name="zsh")
+@click.option(
+    "--install",
+    is_flag=True,
+    help="Install completion block into your zshrc file.",
+)
+@click.option(
+    "--zshrc",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=Path.home() / ".zshrc",
+    show_default=True,
+    help="Path to zsh startup file.",
+)
+@click.pass_context
+def completion_zsh(ctx: click.Context, install: bool, zshrc: Path) -> None:
+    """Print or install zsh autocomplete configuration."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        block = _zsh_completion_block()
+        if not install:
+            click.echo(block)
+            return
+
+        status = _upsert_managed_block(
+            zshrc,
+            block,
+            _ZSH_COMPLETION_BLOCK_START,
+            _ZSH_COMPLETION_BLOCK_END,
+        )
+        console.print(f"[bold green]zsh completion {status}:[/bold green] {zshrc}")
+        console.print(f"Reload your shell or run: [bold]source {zshrc}[/bold]")
+    except Exception as exc:
+        _handle_error(exc, debug)
 
 
 @cli.group(name="skills")

@@ -8,7 +8,7 @@
 
 ## How it works
 
-1. **Index** — `codeindex` walks a repository, filters files by configurable include/exclude patterns, splits content into overlapping text chunks, and generates vector embeddings using a local `sentence-transformers` model.
+1. **Index** — `codeindex` walks a repository, filters files by configurable include/exclude patterns, splits content into overlapping text chunks, and generates vector embeddings using a configurable local `sentence-transformers` model.
 2. **Store** — Embeddings and metadata are persisted in PostgreSQL via the [pgvector](https://github.com/pgvector/pgvector) extension, managed through [CocoIndex](https://github.com/cocoindex-io/cocoindex) flows.
 3. **Search** — Queries are embedded with the same model and matched against stored chunks using cosine similarity, returning ranked results with file paths and snippets.
 
@@ -46,16 +46,19 @@ docker run --name codeindex-db \
 docker exec -i codeindex-db psql -U postgres -d cocoindex \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
-# 4) Configure DB URL
-cp .env.example .env
-
-# 5) Install CLI globally from this clone
+# 4) Install CLI globally from this clone
 uv tool install . --force
 
-# 6) Sanity check
+# 5) Initial setup (writes ~/.config/codeindex/config.toml)
+codeindex setup --database-url "postgresql://postgres:postgres@localhost:5432/cocoindex" --preset fast
+
+# 6) See model presets (optional)
+codeindex embedding-models
+
+# 7) Sanity check
 codeindex doctor
 
-# 7) Index this same repository and query it
+# 8) Index this same repository and query it
 codeindex index "$(pwd)" codeindex_demo
 codeindex search codeindex_demo "how does reindex work" -k 5
 codeindex list
@@ -118,6 +121,8 @@ codeindex index <path> [name] [options]
 | `--reset` | Drop the existing index and rebuild from scratch. |
 | `--max-files N` | Abort if the matched file count exceeds N. |
 | `--max-file-bytes N` | Abort if any individual file exceeds N bytes. |
+| `--embedding-provider {local,openrouter}` | Override embedding provider for this run. |
+| `--embedding-model MODEL_ID` | Override embedding model for this run. |
 
 ### `search`
 
@@ -129,7 +134,7 @@ codeindex search <name> "<query>" [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-k, --top-k N` | 5 | Number of results to return. |
+| `-k, --top-k N` | 10 | Number of results to return. |
 | `-s, --snippet-length N` | 500 | Characters to display per result. |
 
 Results are ranked by cosine similarity score and color-coded (green ≥ 0.4, yellow ≥ 0.25, red below). When the stored chunk location includes line metadata, output also shows line/range (for example `path/to/file.py:42-58`).
@@ -142,7 +147,7 @@ Re-index an existing project using its saved metadata or project defaults.
 codeindex reindex <name> [options]
 ```
 
-Accepts the same `--path`, `--include`, `--exclude`, `--reset`, `--max-files`, and `--max-file-bytes` options as `index`. Useful to pick up code changes since the last index run.
+Accepts the same `--path`, `--include`, `--exclude`, `--reset`, `--max-files`, `--max-file-bytes`, `--embedding-provider`, and `--embedding-model` options as `index`. Useful to pick up code changes since the last index run.
 
 ### `list`
 
@@ -203,6 +208,50 @@ codeindex update --path /absolute/path/to/codeindex
 
 The CLI also shows a lightweight update notification when a newer release is detected.
 
+### `embedding-models`
+
+List model presets derived from the benchmark study:
+
+```bash
+codeindex embedding-models
+```
+
+### `setup`
+
+Create initial global config with DB URL and embedding model:
+
+```bash
+codeindex setup --database-url "postgresql://user:password@localhost:5432/cocoindex" --preset fast
+```
+
+Use OpenRouter:
+
+```bash
+export OPEN_ROUTER_API_KEY="<your_key>"
+codeindex setup --embedding-provider openrouter --embedding-model "openai/text-embedding-3-small"
+```
+
+Use a custom local model id instead of preset:
+
+```bash
+codeindex setup --embedding-model "intfloat/e5-large-v2"
+```
+
+### `completion zsh`
+
+Print zsh autocomplete config:
+
+```bash
+codeindex completion zsh
+```
+
+Install it automatically in `~/.zshrc`:
+
+```bash
+codeindex completion zsh --install
+source ~/.zshrc
+```
+
 ### `skills set` / `skills update`
 
 Set or update Codex/Claude integration templates.
@@ -234,6 +283,23 @@ codeindex import metadata.json [--dry-run]
 
 ## Configuration
 
+### Global config
+
+Use `codeindex setup` (recommended):
+
+```bash
+codeindex setup --database-url "postgresql://user:password@localhost:5432/cocoindex" --preset balanced
+```
+
+Or create the file manually:
+
+```toml
+# ~/.config/codeindex/config.toml
+database_url = "postgresql://user:password@localhost:5432/cocoindex"
+embedding_provider = "local"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+```
+
 ### Database URL
 
 Resolved in the following precedence order:
@@ -242,12 +308,15 @@ Resolved in the following precedence order:
 2. `.env` file discovered from the current directory upward
 3. `~/.config/codeindex/config.toml`
 
-Global config file example:
+### Embedding model
 
-```toml
-# ~/.config/codeindex/config.toml
-database_url = "postgresql://user:password@localhost:5432/cocoindex"
-```
+Resolution order depends on command:
+
+1. `index`: CLI `--embedding-provider/--embedding-model` -> `.codeindex.toml` (`[index].embedding_provider`, `[index].embedding_model`) -> global (`COCOINDEX_EMBEDDING_PROVIDER`, `COCOINDEX_EMBEDDING_MODEL` or `~/.config/codeindex/config.toml`) -> built-in defaults.
+2. `reindex`: CLI provider/model -> `.codeindex.toml` -> catalog metadata -> global -> built-in defaults.
+3. `search`: catalog metadata -> global -> built-in default.
+
+For `openrouter`, set `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
 
 ### Project config (`.codeindex.toml`)
 
@@ -262,6 +331,8 @@ All keys are optional:
 ```toml
 [index]
 name = "my_project"                    # Defaults to directory name
+embedding_provider = "local"           # local | openrouter
+embedding_model = "BAAI/bge-base-en-v1.5"  # Optional per-project model override
 include_patterns = ["*.py", "*.md"]   # Replaces built-in defaults
 exclude_patterns = [                   # Replaces built-in defaults
   "node_modules/**",
@@ -367,6 +438,6 @@ uv run pytest -q -m e2e
 Changes are tracked in [CHANGELOG.md](CHANGELOG.md). Releases are published by pushing a version tag; CI handles the rest:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```

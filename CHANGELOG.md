@@ -17,10 +17,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Self-update commands: `codeindex check-update` and `codeindex update`.
 - Automatic (cached) update notification when a newer release is available.
 - Agent template management commands: `codeindex skills set` and `codeindex skills update`.
+- Embedding model presets and setup commands: `codeindex embedding-models` and `codeindex setup`.
+- CLI support for per-run embedding overrides via `--embedding-model` on `index` and `reindex`.
+- Project-level embedding model option: `[index].embedding_model` in `.codeindex.toml`.
+- Expanded test coverage for embedding model precedence and setup behavior.
+- OpenRouter embedding support (`embedding_provider = "openrouter"`) for index, reindex, and search flows.
+- New CLI override flag `--embedding-provider` on `index` and `reindex`.
+- zsh autocomplete support with `codeindex completion zsh` and `codeindex completion zsh --install`.
 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.
 - Catalog access layer (`codeindex.catalog`) now focused exclusively on CRUD operations.
-- Package version bumped to `1.0.3` to prevent stale install cache behavior.
+- Setup/config now persists both `embedding_provider` and `embedding_model`.
+- Catalog metadata now stores embedding provider to keep query/index provider-model alignment.
+- Package version bumped to `1.0.6` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
+- Search now uses the indexed catalog model when available, improving query/index model alignment.

@@ -127,3 +127,116 @@ def test_resolve_database_url_precedence_dotenv_over_config(
 
     assert value == "postgresql://dotenv-user:pw@localhost:5432/dotenvdb"
     assert source.startswith(".env:")
+
+
+def test_validate_embedding_model_name_rejects_empty() -> None:
+    with pytest.raises(ValidationError):
+        config.validate_embedding_model_name("   ")
+
+
+def test_resolve_embedding_model_precedence_explicit_over_env_and_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(config.EMBEDDING_MODEL_ENV_VAR, "sentence-transformers/env-model")
+    conf = tmp_path / "config.toml"
+    conf.write_text(
+        "embedding_model = 'sentence-transformers/config-model'\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_embedding_model(
+        explicit_model="sentence-transformers/explicit-model",
+        config_path=conf,
+    )
+
+    assert value == "sentence-transformers/explicit-model"
+    assert source == "explicit"
+
+
+def test_resolve_embedding_model_from_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(config.EMBEDDING_MODEL_ENV_VAR, raising=False)
+    (tmp_path / ".env").write_text(
+        "COCOINDEX_EMBEDDING_MODEL=sentence-transformers/dotenv-model\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_embedding_model()
+
+    assert value == "sentence-transformers/dotenv-model"
+    assert source.startswith(".env:")
+
+
+def test_resolve_embedding_model_from_config_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv(config.EMBEDDING_MODEL_ENV_VAR, raising=False)
+    conf = tmp_path / "config.toml"
+    conf.write_text(
+        "[codeindex]\nembedding_model = 'sentence-transformers/config-model'\n",
+        encoding="utf-8",
+    )
+
+    value, source = config.resolve_embedding_model(config_path=conf)
+
+    assert value == "sentence-transformers/config-model"
+    assert source == f"config:{conf}"
+
+
+def test_resolve_embedding_model_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(config.EMBEDDING_MODEL_ENV_VAR, raising=False)
+
+    value, source = config.resolve_embedding_model(config_path=tmp_path / "missing.toml")
+
+    assert value == config.DEFAULT_EMBEDDING_MODEL
+    assert source == "default:local"
+
+
+def test_resolve_embedding_provider_from_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv(config.EMBEDDING_PROVIDER_ENV_VAR, raising=False)
+    conf = tmp_path / "config.toml"
+    conf.write_text(
+        "embedding_provider = 'openrouter'\n",
+        encoding="utf-8",
+    )
+
+    provider, source = config.resolve_embedding_provider(config_path=conf)
+
+    assert provider == "openrouter"
+    assert source == f"config:{conf}"
+
+
+def test_resolve_embedding_model_uses_provider_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv(config.EMBEDDING_MODEL_ENV_VAR, raising=False)
+    model, source = config.resolve_embedding_model(
+        config_path=tmp_path / "missing.toml",
+        provider="openrouter",
+    )
+
+    assert model == config.DEFAULT_OPENROUTER_EMBEDDING_MODEL
+    assert source == "default:openrouter"
+
+
+def test_require_embedding_provider_credentials_for_openrouter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(config.OPEN_ROUTER_API_KEY_ENV_VAR, raising=False)
+    monkeypatch.delenv(config.OPENROUTER_API_KEY_ENV_VAR, raising=False)
+
+    with pytest.raises(ConfigurationError):
+        config.require_embedding_provider_credentials("openrouter")

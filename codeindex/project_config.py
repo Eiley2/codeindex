@@ -15,6 +15,8 @@ PROJECT_CONFIG_FILENAME = ".codeindex.toml"
 class ProjectConfig:
     source_file: Path | None = None
     index_name: str | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
     include_patterns: tuple[str, ...] | None = None
     exclude_patterns: tuple[str, ...] | None = None
     default_reset: bool | None = None
@@ -104,9 +106,30 @@ def discover(start_path: Path | None = None) -> ProjectConfig:
         else None
     )
 
+    embedding_model_raw = index_data.get("embedding_model")
+    if embedding_model_raw is not None and not isinstance(embedding_model_raw, str):
+        raise ConfigurationError(f"'index.embedding_model' must be a string in '{config_file}'.")
+    embedding_model = (
+        config.validate_embedding_model_name(embedding_model_raw)
+        if isinstance(embedding_model_raw, str) and embedding_model_raw.strip()
+        else None
+    )
+    embedding_provider_raw = index_data.get("embedding_provider")
+    if embedding_provider_raw is not None and not isinstance(embedding_provider_raw, str):
+        raise ConfigurationError(
+            f"'index.embedding_provider' must be a string in '{config_file}'."
+        )
+    embedding_provider = (
+        config.validate_embedding_provider(embedding_provider_raw)
+        if isinstance(embedding_provider_raw, str) and embedding_provider_raw.strip()
+        else None
+    )
+
     return ProjectConfig(
         source_file=config_file,
         index_name=normalized_index_name,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
         include_patterns=_as_str_tuple(
             index_data.get("include_patterns"),
             "index.include_patterns",

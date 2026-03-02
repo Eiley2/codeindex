@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -128,6 +129,43 @@ def test_index_uses_project_defaults_when_name_is_omitted(
 
     assert result.exit_code == 0
     assert "repo_default" in result.output
+
+
+def test_index_passes_embedding_model_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "repo"
+    project_dir.mkdir()
+    captured: dict[str, object] = {}
+
+    def _index(payload: service_types.IndexInput) -> service_types.IndexOperationResult:
+        captured["embedding_provider"] = payload.embedding_provider
+        captured["embedding_model"] = payload.embedding_model
+        return service_types.IndexOperationResult(
+            stats={},
+            resolved_name="repo_default",
+            project_config_file=None,
+        )
+
+    monkeypatch.setattr(cli_module.service, "index_codebase", _index)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "index",
+            str(project_dir),
+            "--embedding-provider",
+            "openrouter",
+            "--embedding-model",
+            "openai/text-embedding-3-small",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["embedding_provider"] == "openrouter"
+    assert captured["embedding_model"] == "openai/text-embedding-3-small"
 
 
 def test_export_calls_service_and_writes_count(
@@ -266,6 +304,164 @@ def test_check_update_reports_available_update(monkeypatch: pytest.MonkeyPatch) 
     assert "Update available" in result.output
 
 
+def test_embedding_models_lists_presets() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli_module.cli, ["embedding-models"])
+
+    assert result.exit_code == 0
+    assert "fast" in result.output
+    assert "balanced" in result.output
+    assert "supermemory.ai" in result.output
+
+
+def test_setup_writes_config_with_preset(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "setup",
+            "--config-path",
+            str(cfg),
+            "--database-url",
+            "postgresql://user:pw@localhost:5432/cocoindex",
+            "--preset",
+            "balanced",
+        ],
+    )
+
+    assert result.exit_code == 0
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    assert data["database_url"] == "postgresql://user:pw@localhost:5432/cocoindex"
+    assert data["embedding_provider"] == "local"
+    assert data["embedding_model"] == "BAAI/bge-base-en-v1.5"
+
+
+def test_setup_custom_embedding_model_overrides_preset(tmp_path: Path) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "setup",
+            "--config-path",
+            str(cfg),
+            "--preset",
+            "fast",
+            "--embedding-model",
+            "intfloat/e5-large-v2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    assert data["embedding_provider"] == "local"
+    assert data["embedding_model"] == "intfloat/e5-large-v2"
+
+
+def test_setup_openrouter_requires_api_key(tmp_path: Path) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "setup",
+            "--config-path",
+            str(cfg),
+            "--embedding-provider",
+            "openrouter",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "OPEN_ROUTER_API_KEY" in result.output
+
+
+def test_setup_openrouter_writes_default_model_with_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key")
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "setup",
+            "--config-path",
+            str(cfg),
+            "--embedding-provider",
+            "openrouter",
+        ],
+    )
+
+    assert result.exit_code == 0
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    assert data["embedding_provider"] == "openrouter"
+    assert data["embedding_model"] == "openai/text-embedding-3-small"
+
+
+def test_setup_existing_file_requires_force(tmp_path: Path) -> None:
+    runner = CliRunner()
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("embedding_model = 'sentence-transformers/all-MiniLM-L6-v2'\n", encoding="utf-8")
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "setup",
+            "--config-path",
+            str(cfg),
+        ],
+    )
+
+    assert result.exit_code == 3
+    assert "already exists" in result.output
+
+
+def test_completion_zsh_prints_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
+
+    result = runner.invoke(cli_module.cli, ["completion", "zsh"])
+
+    assert result.exit_code == 0
+    assert "codeindex zsh completion" in result.output
+    assert "_CODEINDEX_COMPLETE=zsh_source codeindex" in result.output
+
+
+def test_completion_zsh_install_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    monkeypatch.setenv("CODEINDEX_DISABLE_UPDATE_CHECK", "1")
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text("# existing\n", encoding="utf-8")
+
+    first = runner.invoke(
+        cli_module.cli,
+        ["completion", "zsh", "--install", "--zshrc", str(zshrc)],
+    )
+    second = runner.invoke(
+        cli_module.cli,
+        ["completion", "zsh", "--install", "--zshrc", str(zshrc)],
+    )
+
+    assert first.exit_code == 0
+    assert second.exit_code == 0
+    content = zshrc.read_text(encoding="utf-8")
+    assert content.count("codeindex zsh completion") == 2
+    assert "_CODEINDEX_COMPLETE=zsh_source codeindex" in content
+    assert "unchanged" in second.output
+
+
 def test_update_uses_local_path_when_provided(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -286,6 +482,38 @@ def test_update_uses_local_path_when_provided(
     assert result.exit_code == 0
     assert called["source"] == str(repo_path)
     assert "Update completed" in result.output
+
+
+def test_reindex_passes_embedding_model_to_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+
+    def _reindex(payload: service_types.ReindexInput) -> service_types.IndexOperationResult:
+        captured["embedding_provider"] = payload.embedding_provider
+        captured["embedding_model"] = payload.embedding_model
+        return service_types.IndexOperationResult(
+            stats={},
+            resolved_name="demo_index",
+            project_config_file=None,
+        )
+
+    monkeypatch.setattr(cli_module.service, "reindex_codebase", _reindex)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "reindex",
+            "demo-index",
+            "--embedding-provider",
+            "openrouter",
+            "--embedding-model",
+            "openai/text-embedding-3-small",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["embedding_provider"] == "openrouter"
+    assert captured["embedding_model"] == "openai/text-embedding-3-small"
 
 
 def test_skills_set_writes_codex_and_claude_templates(
