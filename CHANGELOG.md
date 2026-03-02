@@ -20,4 +20,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.
 - Catalog access layer (`codeindex.catalog`) now focused exclusively on CRUD operations.
-- Package version aligned to the v1 release line (`1.0.1`).
+- Package version bumped to `1.0.2` to prevent stale install cache behavior.
