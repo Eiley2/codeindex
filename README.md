@@ -216,6 +216,15 @@ List model presets derived from the benchmark study:
 codeindex embedding-models
 ```
 
+Current presets:
+
+| Preset | Provider | Model ID | Typical usage |
+|--------|----------|----------|----------------|
+| `fast` | `local` | `sentence-transformers/all-MiniLM-L6-v2` | Fastest, low resource usage |
+| `balanced` | `local` | `BAAI/bge-base-en-v1.5` | Quality/speed balance |
+| `quality` | `local` | `intfloat/e5-large-v2` | Best retrieval quality (heavier) |
+| `multilingual` | `local` | `nomic-ai/nomic-embed-text-v1.5` | Multilingual / long-context scenarios |
+
 ### `setup`
 
 Create initial global config with DB URL and embedding model:
@@ -249,6 +258,13 @@ For scripts/CI, disable prompts explicitly:
 
 ```bash
 codeindex setup --no-interactive --force --preset fast
+```
+
+Model/provider overrides at command level:
+
+```bash
+codeindex index . my_repo --embedding-provider local --embedding-model "BAAI/bge-base-en-v1.5"
+codeindex reindex my_repo --embedding-provider openrouter --embedding-model "openai/text-embedding-3-small" --reset
 ```
 
 ### `completion zsh`
@@ -331,6 +347,29 @@ Resolution order depends on command:
 3. `search`: catalog metadata -> global -> built-in default.
 
 For `openrouter`, set `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
+
+### Supported Models By Provider
+
+`codeindex` supports two embedding providers:
+
+1. `local`
+- Uses `cocoindex.functions.SentenceTransformerEmbed`.
+- Accepts sentence-transformers compatible model IDs (Hugging Face style), for example:
+  `sentence-transformers/all-MiniLM-L6-v2`, `BAAI/bge-base-en-v1.5`, `intfloat/e5-large-v2`.
+
+2. `openrouter`
+- Uses `cocoindex.functions.EmbedText` with `OPEN_ROUTER`.
+- Accepts embedding-capable OpenRouter model IDs, for example:
+  `openai/text-embedding-3-small`.
+- Requires `OPEN_ROUTER_API_KEY` (or `OPENROUTER_API_KEY`).
+
+### Switching Models Safely
+
+If you change provider/model for an existing index, re-run indexing with reset to avoid mixed vectors:
+
+```bash
+codeindex reindex <name> --embedding-provider <provider> --embedding-model "<model_id>" --reset
+```
 
 ### Project config (`.codeindex.toml`)
 

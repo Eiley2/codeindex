@@ -3,7 +3,14 @@
 name = "my_project"
 # Optional: per-project embedding model override
 # (fallback order: CLI flag > this value > global config/env > default)
-embedding_provider = "local"  # "local" or "openrouter"
+# Providers:
+# - "local": sentence-transformers models (e.g. all-MiniLM-L6-v2, bge-base-en-v1.5)
+# - "openrouter": embedding-capable model IDs from OpenRouter (requires OPEN_ROUTER_API_KEY)
+embedding_provider = "local"  # "local" | "openrouter"
+# Examples:
+# - local: "sentence-transformers/all-MiniLM-L6-v2"
+# - local: "BAAI/bge-base-en-v1.5"
+# - openrouter: "openai/text-embedding-3-small"
 embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 include_patterns = ["*.py", "*.md"]
 # Important: this replaces default excludes entirely.
