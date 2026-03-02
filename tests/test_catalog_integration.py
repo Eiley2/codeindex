@@ -7,7 +7,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from codeindex import catalog, config
+from codeindex import catalog, config, migrations
 
 
 @pytest.fixture
@@ -15,6 +15,7 @@ def integration_db_url() -> str:
     db_url = os.getenv("COCOINDEX_TEST_DATABASE_URL")
     if not db_url:
         pytest.skip("Set COCOINDEX_TEST_DATABASE_URL to run integration tests")
+    migrations.apply_migrations(db_url)
     return db_url
 
 
