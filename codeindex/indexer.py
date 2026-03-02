@@ -6,11 +6,14 @@ import os
 import cocoindex
 
 from . import config
+from .errors import ValidationError
 
 
 def _build_flow(name: str, path: str, included: list[str], excluded: list[str]) -> None:
     @cocoindex.flow_def(name=name)
-    def _flow(flow_builder: cocoindex.FlowBuilder, data_scope: cocoindex.DataScope):
+    def _flow(
+        flow_builder: cocoindex.FlowBuilder, data_scope: cocoindex.DataScope
+    ) -> None:
         data_scope["files"] = flow_builder.add_source(
             cocoindex.sources.LocalFile(
                 path=path,
@@ -84,13 +87,18 @@ def run(
 ) -> dict:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
-        raise ValueError(f"'{path}' is not a valid directory.")
+        raise ValidationError(f"'{path}' is not a valid directory.")
+    if not included:
+        raise ValidationError("At least one include pattern is required.")
+    if not name.strip():
+        raise ValidationError("Index name cannot be empty.")
 
+    flow_name = config.normalize_index_name(name)
     db_url = config.get_database_url()
     cocoindex.init(
         cocoindex.Settings(
             database=cocoindex.DatabaseConnectionSpec(url=db_url)
         )
     )
-    _build_flow(name, abs_path, included, excluded)
+    _build_flow(flow_name, abs_path, included, excluded)
     return asyncio.run(_run_async(reset=reset))
