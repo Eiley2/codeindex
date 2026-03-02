@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Safer `delete` flow: dry-run preview and typed index-name confirmation before applying.
 - Metadata backup commands: `export` (catalog to JSON) and `import` (JSON to catalog, with dry-run).
 - Additional test coverage for edge cases and full index lifecycle paths.
+- Self-update commands: `codeindex check-update` and `codeindex update`.
+- Automatic (cached) update notification when a newer release is available.
 
 ### Changed
 - Migration bootstrap centralized in the service layer; no longer performed ad-hoc in CLI commands.

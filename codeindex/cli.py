@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 from typing import NoReturn
 
@@ -11,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import config, service
+from . import config, service, updater
 from .errors import ConfigurationError, DatabaseError, NotFoundError, ValidationError
 
 console = Console()
@@ -59,6 +60,14 @@ def cli(ctx: click.Context, debug: bool, verbose: bool) -> None:
     ctx.obj["debug"] = debug
     ctx.obj["verbose"] = verbose
     _configure_logging(verbose)
+
+    if ctx.invoked_subcommand is None:
+        return
+    if ctx.invoked_subcommand in {"update", "check-update"}:
+        return
+    notice = updater.update_notification()
+    if notice:
+        console.print(f"[yellow]{notice}[/yellow]")
 
 
 @cli.command()
@@ -527,3 +536,78 @@ def import_metadata_cmd(ctx: click.Context, input_path: Path, dry_run: bool) -> 
         console.print(f"[bold green]Validated[/bold green] {count} metadata entries.")
     else:
         console.print(f"[bold green]Imported[/bold green] {count} metadata entries.")
+
+
+@cli.command(name="check-update")
+@click.option(
+    "--repo",
+    default=updater.DEFAULT_REPO,
+    show_default=True,
+    help="GitHub repo in OWNER/REPO format to check latest release.",
+)
+@click.pass_context
+def check_update(ctx: click.Context, repo: str) -> None:
+    """Check if a newer codeindex version is available."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    try:
+        status = updater.check_for_updates(repo=repo)
+    except Exception as exc:
+        _handle_error(exc, debug)
+
+    console.print(f"[bold]Current version:[/bold] {status.current_version}")
+    if status.latest_version is None:
+        console.print(
+            "[yellow]Could not determine latest release version right now.[/yellow]"
+        )
+        return
+
+    console.print(f"[bold]Latest version:[/bold] {status.latest_version}")
+    if status.update_available:
+        console.print(
+            "[yellow]Update available.[/yellow] Run "
+            "[bold]codeindex update[/bold]."
+        )
+    else:
+        console.print("[bold green]You are using the latest version.[/bold green]")
+
+
+@cli.command()
+@click.option(
+    "--repo",
+    default=updater.DEFAULT_REPO,
+    show_default=True,
+    help="GitHub repo in OWNER/REPO format used when --path is not provided.",
+)
+@click.option(
+    "--path",
+    type=click.Path(
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        path_type=Path,
+        resolve_path=True,
+    ),
+    default=None,
+    help="Install from a local repository path instead of GitHub.",
+)
+@click.pass_context
+def update(ctx: click.Context, repo: str, path: Path | None) -> None:
+    """Update the installed codeindex CLI."""
+    debug = bool(ctx.obj.get("debug")) if ctx.obj else False
+    source = str(path) if path is not None else updater.source_from_repo(repo)
+    try:
+        updater.run_self_update(source)
+    except FileNotFoundError:
+        _handle_error(
+            ValidationError("`uv` is required to run updates but was not found in PATH."),
+            debug,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip() if exc.stderr else ""
+        stdout = exc.stdout.strip() if exc.stdout else ""
+        detail = stderr or stdout or str(exc)
+        _handle_error(ValidationError(f"Update failed: {detail}"), debug)
+
+    console.print(f"[bold green]Update completed.[/bold green] Source: {source}")
+    console.print("Run [bold]hash -r[/bold] if your shell caches command paths.")

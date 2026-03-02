@@ -90,7 +90,7 @@ codeindex --help
 To upgrade an existing global install:
 
 ```bash
-uv tool install --force /absolute/path/to/repo
+uv tool install --force --refresh /absolute/path/to/repo
 ```
 
 ---
@@ -186,6 +186,30 @@ codeindex doctor
 ```
 
 Exits with code `6` if any check fails.
+
+### `check-update`
+
+Check whether your installed CLI is behind the latest GitHub release.
+
+```bash
+codeindex check-update
+```
+
+### `update`
+
+Update the installed CLI package.
+
+```bash
+codeindex update
+```
+
+From a local clone instead of GitHub:
+
+```bash
+codeindex update --path /absolute/path/to/codeindex
+```
+
+The CLI also shows a lightweight update notification when a newer release is detected.
 
 ### `export` / `import`
 

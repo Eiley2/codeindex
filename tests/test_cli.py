@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from codeindex import searcher as searcher_types
 from codeindex import service as service_types
+from codeindex import updater as updater_types
 from codeindex.doctor import DoctorCheck
 from codeindex.errors import ConfigurationError, NotFoundError
 
@@ -232,3 +233,45 @@ def test_search_shows_line_range_when_available(
 
     assert result.exit_code == 0
     assert "app/main.py:12-14" in result.output
+
+
+def test_check_update_reports_available_update(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        cli_module.updater,
+        "check_for_updates",
+        lambda repo: updater_types.VersionStatus(
+            current_version="0.1.0",
+            latest_version="0.1.1",
+            update_available=True,
+        ),
+    )
+
+    result = runner.invoke(cli_module.cli, ["check-update"])
+
+    assert result.exit_code == 0
+    assert "Current version" in result.output
+    assert "Latest version" in result.output
+    assert "Update available" in result.output
+
+
+def test_update_uses_local_path_when_provided(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    called: dict[str, str] = {}
+
+    def _run(source: str) -> None:
+        called["source"] = source
+
+    monkeypatch.setattr(cli_module.updater, "run_self_update", _run)
+
+    result = runner.invoke(cli_module.cli, ["update", "--path", str(repo_path)])
+
+    assert result.exit_code == 0
+    assert called["source"] == str(repo_path)
+    assert "Update completed" in result.output
