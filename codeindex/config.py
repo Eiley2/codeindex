@@ -126,6 +126,8 @@ def normalize_index_name(name: str) -> str:
         raise ValidationError(
             "Index name must contain at least one alphanumeric character."
         )
+    if normalized[0].isdigit():
+        normalized = f"_{normalized}"
     return normalized
 
 

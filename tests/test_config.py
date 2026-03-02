@@ -10,6 +10,11 @@ from codeindex.errors import ConfigurationError, ValidationError
 
 def test_normalize_index_name() -> None:
     assert config.normalize_index_name("My App-1") == "my_app_1"
+    assert config.normalize_index_name("2vanguard") == "_2vanguard"
+
+
+def test_table_name_for_numeric_prefix_index() -> None:
+    assert config.table_name("2vanguard") == "_2vanguard__code_embeddings"
 
 
 def test_normalize_index_name_invalid() -> None:
