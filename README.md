@@ -130,9 +130,9 @@ codeindex search <name> "<query>" [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-k, --top-k N` | 5 | Number of results to return. |
-| `-s, --snippet-length N` | 250 | Characters to display per result. |
+| `-s, --snippet-length N` | 500 | Characters to display per result. |
 
-Results are ranked by cosine similarity score and color-coded (green ≥ 0.4, yellow ≥ 0.25, red below).
+Results are ranked by cosine similarity score and color-coded (green ≥ 0.4, yellow ≥ 0.25, red below). When the stored chunk location includes line metadata, output also shows line/range (for example `path/to/file.py:42-58`).
 
 ### `reindex`
 

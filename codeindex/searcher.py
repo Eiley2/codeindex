@@ -1,4 +1,7 @@
+import json
+import re
 from dataclasses import dataclass
+from typing import Any
 
 import cocoindex
 import psycopg
@@ -16,6 +19,90 @@ class SearchResult:
     score: float
     filename: str
     text: str
+    location: Any | None = None
+    line_start: int | None = None
+    line_end: int | None = None
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _extract_line_range(location: Any) -> tuple[int | None, int | None]:
+    if location is None:
+        return None, None
+
+    if isinstance(location, str):
+        stripped = location.strip()
+        if not stripped:
+            return None, None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            start_match = re.search(
+                r"(?:line|lineno|line_start|start_line)\D+(\d+)",
+                stripped,
+                re.I,
+            )
+            end_match = re.search(r"(?:line_end|end_line)\D+(\d+)", stripped, re.I)
+            start = int(start_match.group(1)) if start_match else None
+            end = int(end_match.group(1)) if end_match else start
+            return start, end
+        return _extract_line_range(parsed)
+
+    if isinstance(location, dict):
+        direct_start = (
+            location.get("line_start")
+            or location.get("start_line")
+            or location.get("line")
+            or location.get("lineno")
+            or location.get("row")
+        )
+        direct_end = (
+            location.get("line_end")
+            or location.get("end_line")
+            or location.get("line")
+            or location.get("lineno")
+            or location.get("row")
+        )
+        start = _coerce_positive_int(direct_start)
+        end = _coerce_positive_int(direct_end)
+        if start is not None:
+            return start, end or start
+
+        start_block = location.get("start")
+        end_block = location.get("end")
+        nested_start, _ = _extract_line_range(start_block)
+        nested_end, _ = _extract_line_range(end_block)
+        if nested_start is not None:
+            return nested_start, nested_end or nested_start
+
+        for value in location.values():
+            nested_start, nested_end = _extract_line_range(value)
+            if nested_start is not None:
+                return nested_start, nested_end or nested_start
+        return None, None
+
+    if isinstance(location, (list, tuple)):
+        if len(location) >= 2:
+            left_start, _ = _extract_line_range(location[0])
+            right_start, _ = _extract_line_range(location[1])
+            if left_start is not None:
+                return left_start, right_start or left_start
+        for item in location:
+            nested_start, nested_end = _extract_line_range(item)
+            if nested_start is not None:
+                return nested_start, nested_end or nested_start
+        return None, None
+
+    return None, None
 
 
 @cocoindex.transform_flow()
@@ -101,16 +188,27 @@ def search(
             with conn.cursor() as cur:
                 query_sql = sql.SQL(
                     """
-                    SELECT filename, text, 1 - (embedding <=> %s::vector) AS score
+                    SELECT filename, location, text, 1 - (embedding <=> %s::vector) AS score
                     FROM {table}
                     ORDER BY score DESC
                     LIMIT %s
                     """
                 ).format(table=sql.Identifier(table))
                 cur.execute(query_sql, (query_vector, top_k))
-                return [
-                    SearchResult(rank=i + 1, score=score, filename=filename, text=text)
-                    for i, (filename, text, score) in enumerate(cur.fetchall())
-                ]
+                results: list[SearchResult] = []
+                for i, (filename, location, text, score) in enumerate(cur.fetchall()):
+                    line_start, line_end = _extract_line_range(location)
+                    results.append(
+                        SearchResult(
+                            rank=i + 1,
+                            score=score,
+                            filename=filename,
+                            text=text,
+                            location=location,
+                            line_start=line_start,
+                            line_end=line_end,
+                        )
+                    )
+                return results
     except PsycopgError as exc:
         raise DatabaseError(f"Search query failed: {exc}") from exc

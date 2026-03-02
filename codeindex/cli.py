@@ -173,7 +173,7 @@ def index(
     "--snippet-length",
     "-s",
     type=click.IntRange(min=1),
-    default=250,
+    default=500,
     show_default=True,
     metavar="N",
     help="Characters to show per result.",
@@ -225,6 +225,11 @@ def search(
         header.append(f"#{result.rank} ", style="dim")
         header.append(f"[{result.score:.3f}] ", style=f"bold {score_color}")
         header.append(result.filename, style="bold white")
+        if result.line_start is not None:
+            if result.line_end is not None and result.line_end != result.line_start:
+                header.append(f":{result.line_start}-{result.line_end}", style="dim")
+            else:
+                header.append(f":{result.line_start}", style="dim")
 
         console.print()
         console.print(header)

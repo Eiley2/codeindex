@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from codeindex import searcher as searcher_types
 from codeindex import service as service_types
 from codeindex.doctor import DoctorCheck
 from codeindex.errors import ConfigurationError, NotFoundError
@@ -204,3 +205,30 @@ def test_delete_with_yes_executes_delete(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.exit_code == 0
     assert called["value"] is True
     assert "Deletion completed" in result.output
+
+
+def test_search_shows_line_range_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = CliRunner()
+
+    monkeypatch.setattr(
+        cli_module.service,
+        "search_index",
+        lambda _name, _query, top_k: [
+            searcher_types.SearchResult(
+                rank=1,
+                score=0.91,
+                filename="app/main.py",
+                text="def handler():\n    return True\n",
+                location={"start": {"line": 12}, "end": {"line": 14}},
+                line_start=12,
+                line_end=14,
+            )
+        ],
+    )
+
+    result = runner.invoke(cli_module.cli, ["search", "demo-index", "handler"])
+
+    assert result.exit_code == 0
+    assert "app/main.py:12-14" in result.output
