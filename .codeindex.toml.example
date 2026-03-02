@@ -2,7 +2,27 @@
 # Optional: defaults to folder name if omitted
 name = "my_project"
 include_patterns = ["*.py", "*.md"]
-exclude_patterns = [".git/**", "dist/**", "__pycache__/**"]
+# Important: this replaces default excludes entirely.
+# Keep node_modules/.venv/caches excluded to avoid slow indexing.
+exclude_patterns = [
+  "node_modules/**",
+  ".git/**",
+  ".venv/**",
+  "venv/**",
+  "env/**",
+  ".tox/**",
+  ".nox/**",
+  "build/**",
+  "dist/**",
+  ".next/**",
+  "__pycache__/**",
+  ".mypy_cache/**",
+  ".pytest_cache/**",
+  ".ruff_cache/**",
+  "*.min.js",
+  "*.lock",
+  "*.map",
+]
 # Optional: used when --reset is not provided
 reset = false
 # Optional safeguards for large repos

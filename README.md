@@ -91,6 +91,8 @@ codeindex import metadata.json --dry-run
 codeindex import metadata.json
 ```
 
+`codeindex` se puede ejecutar desde cualquier directorio; para indexar otro repo usa su path absoluto o relativo.
+
 ## Configuración
 
 Resolución de DB URL (orden de precedencia):
@@ -126,6 +128,26 @@ Claves soportadas:
 - `[chunking].chunk_size`
 - `[chunking].chunk_overlap`
 - `[chunking].min_chunk_size`
+
+## Defaults operativos
+
+Si no defines `.codeindex.toml` ni flags de override:
+
+- `include_patterns`:
+  `*.ts, *.tsx, *.js, *.jsx, *.py, *.go, *.rs, *.java, *.rb, *.php, *.cs, *.sql, *.md`
+- `exclude_patterns`:
+  `node_modules/**, .git/**, .venv/**, venv/**, env/**, .tox/**, .nox/**, build/**, dist/**, .next/**, __pycache__/**, .mypy_cache/**, .pytest_cache/**, .ruff_cache/**, *.min.js, *.lock, *.map`
+- chunking:
+  `chunk_size=1000`, `chunk_overlap=300`, `min_chunk_size=300`
+- límites:
+  `max_files` y `max_file_bytes` desactivados por defecto (sin límite)
+
+Reglas de precedencia importantes:
+
+- Si defines `[index].include_patterns`, reemplazas los includes por defecto.
+- Si defines `[index].exclude_patterns`, reemplazas los excludes por defecto.
+- `--exclude` en CLI se agrega al baseline activo (defaults o `.codeindex.toml`).
+- Si personalizas `exclude_patterns`, mantén explícitamente exclusiones costosas como `.venv/**` y `node_modules/**`.
 
 ## Integraciones de agentes
 

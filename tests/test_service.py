@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from codeindex import catalog, project_config, service
+from codeindex import catalog, config, project_config, service
 from codeindex.errors import NotFoundError, ValidationError
 
 
@@ -59,18 +59,7 @@ def test_reindex_with_path_works_without_metadata(
     assert captured["path"] == str(source)
     assert captured["name"] == "my_index"
     assert captured["included"] == ["*.py"]
-    expected_excluded = [
-        "node_modules/**",
-        ".git/**",
-        "build/**",
-        "dist/**",
-        ".next/**",
-        "__pycache__/**",
-        "*.min.js",
-        "*.lock",
-        "*.map",
-        "tests/**",
-    ]
+    expected_excluded = list(config.DEFAULT_EXCLUDED_PATTERNS) + ["tests/**"]
     assert captured["excluded"] == expected_excluded
     assert captured["reset"] is False
 

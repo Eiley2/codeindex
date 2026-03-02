@@ -29,3 +29,7 @@ codeindex reindex <index_name>
 ```bash
 codeindex delete <index_name> --dry-run
 ```
+
+Notas:
+- `codeindex list` y `codeindex status` sirven para ver qué proyectos/indexes existen.
+- Si usas `.codeindex.toml` con `exclude_patterns`, conserva `node_modules/**` y `.venv/**`.

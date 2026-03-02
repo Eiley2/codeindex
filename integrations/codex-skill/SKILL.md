@@ -13,3 +13,7 @@ codeindex search <index_name> "<query>" -k 10
 codeindex reindex <index_name>
 codeindex delete <index_name> --dry-run
 ```
+
+Notas:
+- `codeindex list` y `codeindex status` muestran los proyectos/indexes disponibles.
+- Si un repo define `exclude_patterns` en `.codeindex.toml`, mantener `node_modules/**` y `.venv/**` para evitar indexado lento.

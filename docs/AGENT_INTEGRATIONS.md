@@ -17,6 +17,10 @@ El skill incluye flujo para:
 - consultar (`search`)
 - actualizar (`reindex`)
 
+Defaults útiles para agentes:
+- Excluye por defecto `node_modules/**`, `.venv/**`, `.git/**`, `dist/**`, caches y artefactos.
+- Si el repo define `[index].exclude_patterns` en `.codeindex.toml`, esos defaults se reemplazan; conviene mantener `node_modules/**` y `.venv/**`.
+
 ## Claude
 
 ```bash

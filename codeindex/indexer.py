@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
 import cocoindex
@@ -88,7 +89,11 @@ async def _run_async(reset: bool) -> dict:
 
 
 def _matches(path: PurePosixPath, patterns: list[str]) -> bool:
-    return any(path.match(pattern) for pattern in patterns)
+    path_str = path.as_posix()
+    return any(
+        path.match(pattern) or fnmatch(path_str, pattern)
+        for pattern in patterns
+    )
 
 
 def _preflight_file_limits(
