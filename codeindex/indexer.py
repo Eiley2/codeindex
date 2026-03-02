@@ -205,6 +205,11 @@ def run(
         max_file_bytes=max_file_bytes,
     )
 
+    # Reset must drop the existing index tables so schema changes
+    # (for example embedding dimension changes) are recreated cleanly.
+    if reset:
+        catalog.delete_index_tables(effective_db_url, flow_name)
+
     cocoindex.init(
         cocoindex.Settings(
             database=cocoindex.DatabaseConnectionSpec(url=effective_db_url)

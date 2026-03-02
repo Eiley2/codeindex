@@ -4,6 +4,7 @@ import importlib
 import tomllib
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -545,6 +546,39 @@ def test_setup_interactive_abort_when_overwrite_declined(tmp_path: Path) -> None
     assert result.exit_code == 0
     assert "aborted" in result.output.lower()
     assert cfg.read_text(encoding="utf-8") == original
+
+
+def test_search_name_autocomplete_uses_indexed_repo_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli_module.service,
+        "list_index_names",
+        lambda: ("demo_index", "legacy_index"),
+    )
+
+    items = cli_module.search.params[0].shell_complete(
+        click.Context(cli_module.search),
+        "demo-",
+    )
+
+    assert [item.value for item in items] == ["demo_index"]
+
+
+def test_search_name_autocomplete_ignores_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise() -> tuple[str, ...]:
+        raise ConfigurationError("missing db url")
+
+    monkeypatch.setattr(cli_module.service, "list_index_names", _raise)
+
+    items = cli_module.search.params[0].shell_complete(
+        click.Context(cli_module.search),
+        "demo",
+    )
+
+    assert items == []
 
 
 def test_completion_zsh_prints_block(monkeypatch: pytest.MonkeyPatch) -> None:

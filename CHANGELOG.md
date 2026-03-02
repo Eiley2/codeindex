@@ -24,6 +24,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - OpenRouter embedding support (`embedding_provider = "openrouter"`) for index, reindex, and search flows.
 - New CLI override flag `--embedding-provider` on `index` and `reindex`.
 - zsh autocomplete support with `codeindex completion zsh` and `codeindex completion zsh --install`.
+- Dynamic index-name autocomplete for `search`, `reindex`, `delete`, and `export` using the indexed repo list.
 - Interactive setup flow (`codeindex setup`) with menu-based selection for presets/provider/model and prompts for overwrite/database URL.
 - Setup menu prompts now explicitly instruct users to enter an option number and press Enter to avoid confusion.
 - Cursor skill integration with `codeindex skills set/update`, including a Cursor `SKILL.md` template.
@@ -36,7 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Reindex now honors global embedding configuration from setup/env when explicitly configured, instead of always reusing historical catalog model metadata.
 - CLI index and reindex output now clearly show the resolved embedding provider and model used for the run.
 - `codeindex search` now supports `--embedding-provider` and `--embedding-model`, and reports vector dimension mismatches as actionable validation errors.
-- Package version bumped to `1.0.12` to prevent stale install cache behavior.
+- Package version bumped to `1.0.13` to prevent stale install cache behavior.
 - Removed `codeindex status`; `codeindex list` is now the single command for index discovery.
 - `codeindex list` now includes chunk count and last indexed timestamp for managed indexes.
 - Search now uses the indexed catalog model when available, improving query/index model alignment.
